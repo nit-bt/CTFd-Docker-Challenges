@@ -16,6 +16,8 @@ Lets players spin up their own container per challenge, and lets you spread chal
 
 | Stop | Only after 5 min | Any time (30s cooldown before restarting that challenge) |
 | Hidden challenges | Can't be tested | Admins can start instances to test before publishing |
+| Start / stop / nuke | GET (a malicious link could trigger it) | POST + CSRF token |
+| Privilege escalation in containers | Allowed | `no-new-privileges` |
 
 Unchanged: one container per user/team at a time, revert after 5 min, auto-remove after 2h, container killed on solve, admin status page.
 
@@ -41,6 +43,29 @@ sudo ./setup-docker-tls.sh <private-ip>
 This turns on the Docker API on port 2376 with TLS + client certs, and puts `ca.pem`, `cert.pem`, `key.pem` in `~/docker-client-certs/`.
 Firewall: 2376 only from the CTFd server, the player port range open to players.
 
+## Lock down a challenge server (firewall)
+
+After `setup-docker-tls.sh`:
+
+```bash
+sudo ./firewall/harden-chal-host.sh <platform-ip>
+```
+
+`<platform-ip>` = the IP CTFd uses to reach this box (GCP: platform's internal IP; Contabo: its public IP).
+
+| Traffic | Result |
+|---|---|
+| Players -> challenge ports | allowed |
+| Containers -> internet, cloud metadata (169.254.169.254), internal network, the host, other containers | blocked |
+| Docker API :2376 | only from `<platform-ip>` |
+
+Rules live in `/usr/local/sbin/ctf-docker-firewall` and re-apply on every boot and Docker restart. The script ends with a self-test from inside a real container.
+Check: `sudo ctf-docker-firewall status` · Turn off: `sudo systemctl stop ctf-docker-firewall`
+
+Note: containers have no outbound network at all (no DNS, no downloads). Bake everything a challenge needs into its image.
+
+On GCP also give the challenge VM **no service account**.
+
 ## Add servers in CTFd
 
 **Admin → Plugins → Docker Config → + Add host**
@@ -63,4 +88,6 @@ Connection info: `http://host:port` or `nc host port`. `host` and `port` get fil
 
 ## Tested
 
-73 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, dead host, challenge delete.
+79 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete.
+
+Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.

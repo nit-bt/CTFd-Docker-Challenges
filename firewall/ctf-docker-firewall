@@ -1,0 +1,79 @@
+#!/bin/sh
+# Firewall rules for a CTF challenge server.
+#
+#   ctf-docker-firewall apply    add/refresh rules (safe to run many times)
+#   ctf-docker-firewall remove   take them out again
+#   ctf-docker-firewall status   show them
+#
+# Players -> containers (published ports)  : allowed
+# Containers -> anything they start        : blocked
+#     (internet, cloud metadata 169.254.169.254, internal network,
+#      other containers, the host itself)
+# Docker API port                           : only from PLATFORM_IP
+#
+# Config: /etc/default/ctf-docker-firewall (or CTF_FW_CONF)
+#   PLATFORM_IP=10.148.0.4    # CTFd server's IP as seen by this box
+#   API_PORT=2376
+#   BRIDGE=docker0
+set -eu
+
+CONF=${CTF_FW_CONF:-/etc/default/ctf-docker-firewall}
+[ -f "$CONF" ] && . "$CONF"
+PLATFORM_IP=${PLATFORM_IP:-}
+API_PORT=${API_PORT:-2376}
+BRIDGE=${BRIDGE:-docker0}
+
+ipt() { iptables -w "$@"; }
+
+ensure_chain() {
+    ipt -N "$1" 2>/dev/null || ipt -F "$1"
+}
+
+ensure_jump() {  # ensure_jump <from-chain> <to-chain>  -> exactly once, as the FIRST rule
+    while ipt -D "$1" -j "$2" 2>/dev/null; do :; done
+    ipt -I "$1" 1 -j "$2"
+}
+
+apply() {
+    # Container -> anywhere through the host (FORWARD path).
+    # DOCKER-USER is Docker's hook for user rules; it runs before Docker's own.
+    ipt -N DOCKER-USER 2>/dev/null || true
+    ensure_chain CTF-FWD
+    ipt -A CTF-FWD -i "$BRIDGE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    ipt -A CTF-FWD -i "$BRIDGE" -j DROP
+    ensure_jump DOCKER-USER CTF-FWD
+
+    # Container -> host itself, and who may reach the Docker API (INPUT path).
+    ensure_chain CTF-INPUT
+    ipt -A CTF-INPUT -i lo -j RETURN
+    ipt -A CTF-INPUT -i "$BRIDGE" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    ipt -A CTF-INPUT -i "$BRIDGE" -j DROP
+    if [ -n "$PLATFORM_IP" ]; then
+        ipt -A CTF-INPUT -p tcp --dport "$API_PORT" -s "$PLATFORM_IP" -j RETURN
+        ipt -A CTF-INPUT -p tcp --dport "$API_PORT" -j DROP
+    fi
+    ensure_jump INPUT CTF-INPUT
+}
+
+remove() {
+    ipt -D DOCKER-USER -j CTF-FWD 2>/dev/null || true
+    ipt -D INPUT -j CTF-INPUT 2>/dev/null || true
+    for c in CTF-FWD CTF-INPUT; do
+        ipt -F "$c" 2>/dev/null || true
+        ipt -X "$c" 2>/dev/null || true
+    done
+}
+
+status() {
+    echo "PLATFORM_IP=${PLATFORM_IP:-<not set: Docker API open to anyone who has the cert>}  API_PORT=$API_PORT  BRIDGE=$BRIDGE"
+    for c in CTF-FWD CTF-INPUT; do
+        echo "--- $c"; ipt -S "$c" 2>/dev/null || echo "(missing)"
+    done
+}
+
+case "${1:-}" in
+    apply) apply ;;
+    remove) remove ;;
+    status) status ;;
+    *) echo "usage: $0 apply|remove|status"; exit 1 ;;
+esac
