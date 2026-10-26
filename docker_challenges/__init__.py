@@ -46,7 +46,7 @@ from CTFd.utils.config import is_teams_mode
 from CTFd.utils.dates import unix_time
 from CTFd.utils.decorators import admins_only, authed_only
 from CTFd.utils.uploads import delete_file
-from CTFd.utils.user import get_current_team, get_current_user, get_ip
+from CTFd.utils.user import get_current_team, get_current_user, get_ip, is_admin
 
 API_TIMEOUT = 10          # seconds for any Docker API call
 REVERT_SECONDS = 300      # player can stop/revert after 5 min
@@ -477,7 +477,7 @@ class ContainerAPI(Resource):
         chal = DockerChallenge.query.filter_by(id=chal_id).first() if chal_id else None
         if chal is None:
             return abort(403, "Unknown challenge")
-        if chal.state != "visible":
+        if chal.state != "visible" and not is_admin():
             return abort(403, "Challenge not available")
         docker = get_host(chal.docker_host_id)
         if docker is None:
