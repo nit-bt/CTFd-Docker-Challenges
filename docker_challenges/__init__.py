@@ -218,7 +218,7 @@ def create_container(docker, image, owner_name):
         exposed[container_port] = {}
         bindings[container_port] = [{"HostPort": str(host_port)}]
 
-    host_config = {"PortBindings": bindings}
+    host_config = {"PortBindings": bindings, "SecurityOpt": ["no-new-privileges"]}
     if docker.mem_limit_mb:
         host_config["Memory"] = int(docker.mem_limit_mb) * 1024 * 1024
     if docker.cpu_limit:
@@ -265,6 +265,14 @@ def remove_tracked(entry):
     delete_container(get_host(entry.host_id), entry.instance_id)
     DockerChallengeTracker.query.filter_by(id=entry.id).delete()
     db.session.commit()
+
+
+def req_arg(name):
+    """Read a parameter from the JSON body (POST) or the form."""
+    data = request.get_json(silent=True) or {}
+    if name in data:
+        return data[name]
+    return request.form.get(name)
 
 
 def owner_filter(query, owner_id):
@@ -471,11 +479,11 @@ class DockerChallengeType(BaseChallenge):
 container_namespace = Namespace("container", description="Start/stop/revert player containers")
 
 
-@container_namespace.route("", methods=["GET"])
+@container_namespace.route("", methods=["POST"])
 class ContainerAPI(Resource):
     @authed_only
-    def get(self):
-        chal_id = request.args.get("id")
+    def post(self):
+        chal_id = req_arg("id")
         chal = DockerChallenge.query.filter_by(id=chal_id).first() if chal_id else None
         if chal is None:
             return abort(403, "Unknown challenge")
@@ -503,7 +511,7 @@ class ContainerAPI(Resource):
         cooldown_key = "docker_cooldown_%s_%s_%s" % ("team" if is_teams_mode() else "user", owner.id, chal.id)
 
         # Stop: allowed any time
-        if request.args.get("stopcontainer"):
+        if req_arg("stop"):
             if check is None:
                 return abort(403, "No running container for this challenge")
             remove_tracked(check)
@@ -618,12 +626,12 @@ class DockerHostsAPI(Resource):
 kill_container = Namespace("nuke", description="Admin: kill containers")
 
 
-@kill_container.route("", methods=["GET"])
+@kill_container.route("", methods=["POST"])
 class KillContainerAPI(Resource):
     @admins_only
-    def get(self):
-        container = request.args.get("container")
-        if request.args.get("all") == "true":
+    def post(self):
+        container = req_arg("container")
+        if req_arg("all") is True:
             for t in DockerChallengeTracker.query.all():
                 remove_tracked(t)
             return True

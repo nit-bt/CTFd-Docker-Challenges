@@ -103,25 +103,25 @@ function check_nuke_container(instance, all) {
 }
 
 function nuke_container(instance, all) {
-    var xhttp = new XMLHttpRequest();
-    xhttp.onreadystatechange = function() {
-        if (this.readyState == 4 && this.status == 200) {
-            if (all == true) {
-                window.location = '{{ script_root }}/admin/docker_status'
-            }
-            else {
-                document.getElementById("tr_" + instance).style.display = "none";
-            }
-        } else if (this.readyState == 4 && this.status != 200) {
-            ezal({
-                title: "Attention!",
-                body: "Error when Deleting Docker Container",
-                button: "Got it!",
-            });
+    fetch("{{ request.script_root }}/api/v1/nuke", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "CSRF-Token": init.csrfNonce
+        },
+        body: JSON.stringify({ container: instance, all: all === true })
+    }).then(function (r) {
+        if (!r.ok) { throw new Error(r.status); }
+        if (all === true) {
+            window.location.reload();
+        } else {
+            document.getElementById("tr_" + instance).style.display = "none";
         }
-    };
-    xhttp.open("GET", "/api/v1/nuke?container=" + instance + "&all=" + all, true);
-    xhttp.send();
+    }).catch(function () {
+        ezal({ title: "Attention!", body: "Error when deleting Docker container", button: "Got it!" });
+    });
 }
 </script>
 <script>

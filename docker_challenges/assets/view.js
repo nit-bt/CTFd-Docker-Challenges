@@ -105,8 +105,10 @@ function get_docker_status() {
 
 function stop_container() {
     if (confirm("Are you sure you want to stop the container for: \n" + CTFd._internal.challenge.data.name)) {
-        CTFd.fetch("/api/v1/container?id=" + encodeURIComponent(docker_chal_id()) + "&stopcontainer=True", {
-            method: "GET"
+        CTFd.fetch("/api/v1/container", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify({ id: docker_chal_id(), stop: true })
         })
         .then(function (response) {
             return response.json().then(function (json) {
@@ -135,8 +137,10 @@ function stop_container() {
 
 function start_container() {
     CTFd.lib.$('#docker_container').html('<div class="text-center"><i class="fas fa-circle-notch fa-spin fa-1x"></i></div>');
-    CTFd.fetch("/api/v1/container?id=" + encodeURIComponent(docker_chal_id()), {
-        method: "GET"
+    CTFd.fetch("/api/v1/container", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ id: docker_chal_id() })
     }).then(function (response) {
         return response.json().then(function (json) {
             if (response.ok) {
