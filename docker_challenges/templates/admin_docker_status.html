@@ -19,29 +19,27 @@
             <table id='dockers' class="table table-striped">
                 <thead>
                     <tr>
-                        <th width="10px" class="text-center" style="cursor: pointer;" onclick="sortTable(0)">ID</th>
-                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(1)">{% if dockers[0].team_id %}Team{% else %}User{% endif %}</th>
-                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(2)">Docker Image</th>
-                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(3)">Challenge</th>
-                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(4)">Instance ID</th>
-                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(5)">Start Time</th>
-                        <th class="text-left">Revoke</th>
+                        <th class="text-center" style="cursor: pointer;" onclick="sortTable(0)">ID</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(1)">{{ owner_label }}</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(2)">Challenge</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(3)">Host</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(4)">Address</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(5)">Image</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(6)">Start Time</th>
+                        <th class="text-left">Kill</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for docker in dockers %}
-                    <tr id='tr_{{docker.instance_id}}' name='{{docker.id}}'>
-                        <td class='text-left' value='{{docker.id}}'>{{docker.id}}</td>
-                        {% if docker.team_id %}
-                        <td class='text-left' value='{{docker.team_id | safe }}'>{{docker.team_id | safe }}</td>
-                        {% else %}
-                        <td class='text-left' value='{{docker.team_id | safe }}'>{{docker.user_id | safe }}</td>
-                        {% endif %}
-                        <td class='text-left' style="white-space: nowrap;" value='{{docker.docker_image}}'>{{docker.docker_image}}</td>
-                        <td class='text-left' style="white-space: nowrap;" value='{{docker.challenge}}'>{{docker.challenge}}</td>
-                        <td class='text-left' value='{{docker.instance_id | truncate(15)}}'>{{docker.instance_id | truncate(15)}}</td>
-                        <td class='text-left' style="white-space: nowrap;" value='{{docker.timestamp}}'>{{docker.timestamp | datetimeformat }}</td>
-                        <td class='text-center'><a id="delete_{{docker.instance_id}}" style="cursor: pointer;" class="fas fa-trash" onclick="check_nuke_container('{{docker.instance_id}}', false)"></a></td>
+                    {% for d in dockers %}
+                    <tr id='tr_{{ d.instance_id }}'>
+                        <td>{{ d.id }}</td>
+                        <td>{{ d.owner }}</td>
+                        <td style="white-space: nowrap;">{{ d.challenge }}</td>
+                        <td>{{ d.host_name }}</td>
+                        <td style="white-space: nowrap;">{{ d.address }}</td>
+                        <td style="white-space: nowrap;">{{ d.docker_image }}</td>
+                        <td style="white-space: nowrap;">{{ d.timestamp | datetimeformat }}</td>
+                        <td class='text-center'><a style="cursor: pointer;" class="fas fa-trash" onclick="check_nuke_container('{{ d.instance_id }}', false)"></a></td>
                     </tr>
                     {% endfor %}
                 </tbody>

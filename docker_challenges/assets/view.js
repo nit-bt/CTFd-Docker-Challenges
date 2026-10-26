@@ -12,8 +12,7 @@ CTFd._internal.challenge.render = function(markdown) {
 
 
 CTFd._internal.challenge.postRender = function() {
-    const containername = CTFd._internal.challenge.data.docker_image;
-    get_docker_status(containername);
+    get_docker_status();
     createWarningModalBody();
 }
 
@@ -24,98 +23,86 @@ function createWarningModalBody(){
     }
 }
 
-function get_docker_status(container) {
-    // Use CTFd.fetch to call the API
+function docker_chal_id() {
+    return CTFd._internal.challenge.data.id;
+}
+
+function docker_start_button_html() {
+    return `
+        <span>
+            <a onclick="start_container();" class='btn btn-dark'>
+                <small style='color:white;'><i class="fas fa-play"></i>  Start Docker Instance for challenge</small>
+            </a>
+        </span>`;
+}
+
+function get_docker_status() {
+    const chalId = docker_chal_id();
+    // Default: show the start button. Replaced below if a container is running.
+    CTFd.lib.$('#docker_container').html(docker_start_button_html());
+
     CTFd.fetch("/api/v1/docker_status").then(response => response.json())
     .then(result => {
-        result.data.forEach(item => {
-            if (item.docker_image == container) {
-                // Split the ports and create the data string
-                var ports = String(item.ports).split(',');
-                var data = '';
-                
-                ports.forEach(port => {
-                    port = String(port);
-                    data = data + 'Host: ' + item.host + ' Port: ' + port + '<br />';
-                });
-                // Update the DOM with the docker container information
-                CTFd.lib.$('#docker_container').html('<pre>Docker Container Information:<br />' + data + 
-                '<div class="mt-2" id="' + String(item.instance_id).substring(0, 10) + '_revert_container"></div>');
+        (result.data || []).forEach(item => {
+            if (String(item.challenge_id) !== String(chalId)) {
+                return;
+            }
+            var ports = (item.ports || []).map(String);
+            var data = '';
+            ports.forEach(port => {
+                data = data + 'Host: ' + item.host + ' Port: ' + port + '<br />';
+            });
+            var revertId = 'revert_' + String(item.instance_id).substring(0, 10);
+            CTFd.lib.$('#docker_container').html('<pre>Docker Container Information:<br />' + data +
+                '<div class="mt-2" id="' + revertId + '"></div></pre>');
 
-                // Update the DOM with connection info information.
-                // Note that connection info should contain "host" and "port"
-                var $link = CTFd.lib.$('.challenge-connection-info');
-                $link.html($link.html().replace(/host/gi, item.host));
-                $link.html($link.html().replace(/port|\b\d{5}\b/gi, ports[0].split("/")[0]));
-
-                // Check if there are links in there, if not and we use a http[s] address, make it a link
-                CTFd.lib.$(".challenge-connection-info").each(function () {
+            // Fill "host" / "port" placeholders in the challenge's connection info
+            var $link = CTFd.lib.$('.challenge-connection-info');
+            if ($link.length) {
+                var html = $link.html();
+                html = html.replace(/\bhost\b/gi, item.host);
+                html = html.replace(/\bport\b|\b\d{5}\b/gi, ports[0]);
+                $link.html(html);
+                $link.each(function () {
                     const $span = CTFd.lib.$(this);
-                    const html = $span.html();
-                
-                    // Skip if already has a link
-                    if (html.includes("<a")) {
-                        return;
-                    }
-                
-                    // If it contains "http", try to extract and wrap it
-                    const urlMatch = html.match(/(http[s]?:\/\/[^\s<]+)/);
-                
+                    const h = $span.html();
+                    if (h.includes("<a")) { return; }
+                    const urlMatch = h.match(/(http[s]?:\/\/[^\s<]+)/);
                     if (urlMatch) {
                         const url = urlMatch[0];
-                        const linked = html.replace(url, `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-                        $span.html(linked);
+                        $span.html(h.replace(url, `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`));
                     }
                 });
-
-                // Set up the countdown timer
-                var countDownDate = new Date(parseInt(item.revert_time) * 1000).getTime();
-                var x = setInterval(function() {
-                    var now = new Date().getTime();
-                    var distance = countDownDate - now;
-                    var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-                    var seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                    if (seconds < 10) {
-                        seconds = "0" + seconds;
-                    }
-
-                    // Update the countdown display
-                    CTFd.lib.$("#" + String(item.instance_id).substring(0, 10) + "_revert_container").html('Stop or Revert Available in ' + minutes + ':' + seconds);
-
-                    // Check if the countdown is finished and enable the revert button
-                    if (distance < 0) {
-                        clearInterval(x);
-                        CTFd.lib.$("#" + String(item.instance_id).substring(0, 10) + "_revert_container").html(
-                            '<a onclick="start_container(\'' + item.docker_image + '\');" class="btn btn-dark">' +
-                            '<small style="color:white;"><i class="fas fa-redo"></i> Revert</small></a> '+
-                            '<a onclick="stop_container(\'' + item.docker_image + '\');" class="btn btn-dark">' +
-                            '<small style="color:white;"><i class="fas fa-redo"></i> Stop</small></a>'
-                        );
-                    }
-                }, 1000);
-
-                return false; // Stop once the correct container is found
             }
+
+            // Countdown until stop/revert is allowed
+            var countDownDate = new Date(parseInt(item.revert_time) * 1000).getTime();
+            var x = setInterval(function() {
+                var distance = countDownDate - new Date().getTime();
+                var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                var seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                if (seconds < 10) { seconds = "0" + seconds; }
+                CTFd.lib.$("#" + revertId).html('Stop or Revert Available in ' + minutes + ':' + seconds);
+                if (distance < 0) {
+                    clearInterval(x);
+                    CTFd.lib.$("#" + revertId).html(
+                        '<a onclick="start_container();" class="btn btn-dark">' +
+                        '<small style="color:white;"><i class="fas fa-redo"></i> Revert</small></a> ' +
+                        '<a onclick="stop_container();" class="btn btn-dark">' +
+                        '<small style="color:white;"><i class="fas fa-stop"></i> Stop</small></a>'
+                    );
+                }
+            }, 1000);
         });
     })
     .catch(error => {
         console.error('Error fetching docker status:', error);
     });
-    // Display the normal start button, if there is no need for updating
-    const NormalStartButtonHTML=`
-        <span>
-            <a onclick="start_container('${CTFd._internal.challenge.data.docker_image}');" class='btn btn-dark'>
-                <small style='color:white;'><i class="fas fa-play"></i>  Start Docker Instance for challenge</small>
-            </a>
-        </span>`
-    CTFd.lib.$('#docker_container').html(NormalStartButtonHTML);
 }
 
-function stop_container(container) {
+function stop_container() {
     if (confirm("Are you sure you want to stop the container for: \n" + CTFd._internal.challenge.data.name)) {
-        CTFd.fetch("/api/v1/container?name=" + encodeURIComponent(container) + 
-                   "&challenge=" + encodeURIComponent(CTFd._internal.challenge.data.name) + 
-                   "&stopcontainer=True", {
+        CTFd.fetch("/api/v1/container?id=" + encodeURIComponent(docker_chal_id()) + "&stopcontainer=True", {
             method: "GET"
         })
         .then(function (response) {
@@ -125,9 +112,7 @@ function stop_container(container) {
                         title: "Attention!",
                         warningText: "The Docker container for <br><strong>" + CTFd._internal.challenge.data.name + "</strong><br> was stopped successfully.",
                         buttonText: "Close",
-                        onClose: function () {
-                            get_docker_status(container);  // ← Will be called when modal is closed
-                        }
+                        onClose: function () { get_docker_status(); }
                     });
                 } else {
                     throw new Error(json.message || 'Failed to stop container');
@@ -139,43 +124,35 @@ function stop_container(container) {
                 title: "Error",
                 warningText: error.message || "An unknown error occurred while stopping the container.",
                 buttonText: "Close",
-                onClose: function () {
-                    get_docker_status(container);  // ← Will be called when modal is closed
-                }
+                onClose: function () { get_docker_status(); }
             });
-
         });
     }
 }
 
-function start_container(container) {
+function start_container() {
     CTFd.lib.$('#docker_container').html('<div class="text-center"><i class="fas fa-circle-notch fa-spin fa-1x"></i></div>');
-    CTFd.fetch("/api/v1/container?name=" + encodeURIComponent(container) + "&challenge=" + encodeURIComponent(CTFd._internal.challenge.data.name), {
+    CTFd.fetch("/api/v1/container?id=" + encodeURIComponent(docker_chal_id()), {
         method: "GET"
     }).then(function (response) {
         return response.json().then(function (json) {
             if (response.ok) {
-                get_docker_status(container);
-    
+                get_docker_status();
                 updateWarningModal({
                     title: "Attention!",
                     warningText: "A Docker container is started for you.<br>Note that you can only revert or stop a container once per 5 minutes!",
                     buttonText: "Got it!"
                 });
-
             } else {
                 throw new Error(json.message || 'Failed to start container');
             }
         });
     }).catch(function (error) {
-        // Handle error and notify the user
         updateWarningModal({
             title: "Error!",
             warningText: error.message || "An unknown error occurred when starting your Docker container.",
             buttonText: "Got it!",
-            onClose: function () {
-                get_docker_status(container);  // ← Will be called when modal is closed
-            }
+            onClose: function () { get_docker_status(); }
         });
     });
 }
@@ -238,7 +215,7 @@ function checkForCorrectFlag() {
 
     if (message.includes("Correct")) {
         // console.log("✅ Correct flag detected:", message);
-        get_docker_status(CTFd._internal.challenge.data.docker_image);
+        get_docker_status();
         clearInterval(checkInterval);
         checkInterval = null;
     }

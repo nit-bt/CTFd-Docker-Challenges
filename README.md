@@ -1,56 +1,63 @@
-# CTFd Docker Plugin
-This plugin for CTFd will allow your competing teams/users to start dockerized images for presented challenges. It adds a challenge type "docker" that can be assigned a specific docker image/tag. A few notable requirements:
+# CTFd Docker Challenges (multi-host fork)
 
-* Docker Config must be set first. You can access this via `/admin/docker_config`. Currently supported config is pure http (no encryption/authentication) or full TLS with client certificate validation. Configuration information for TLS can be found here: https://docs.docker.com/engine/security/https/
-* This plugin is written so that challenges are stored by tags. For example, StormCTF stores all docker challenges for InfoSeCon2019 in the `stormctf/infosecon2019` repository. A challenge example would be `stormctf/infosecon2019:arbit`. This is how you would call the challenge when creating a new challenge.
+Fork of [offsecginger/CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges) for **CTFd 3.7.7**.
+Lets players spin up their own container per challenge, and lets you spread challenges across **several Docker servers**.
 
+## What's different from upstream
 
-## Important Notes
+| | Upstream | This fork |
+|---|---|---|
+| Docker servers | 1 | Many. Each challenge picks its server |
+| Address shown to players | The Docker API address (often a private IP) | Separate **public address** per server |
+| Player ports | Random 30000-60000 | Per-server range (default 30000-31000) |
+| Container limits | None | Per-server memory / CPU / max processes |
+| Teams mode | "One container" check crashes | Works (one container per team) |
+| Dead server | Can hang CTFd | 10s timeout, clean error, UP/DOWN shown in admin |
 
-* It is unknown if using the same tag twice will cause issues. This plugin was written to avoid this issue, but it has not been fully tested.
-* As with all plugins, please security test your Scoreboard before launching the CTF. This plugin has been tested and vetted in the StormCTF environment, but yours may vary.
-* This version of the plugin is modified for CTFd version 3.7. Tested on Version 3.7.7
+Unchanged: one container per user/team at a time, stop/revert after 5 min, auto-remove after 2h, container killed on solve, admin status page.
 
-*Requires flask_wtf*
-`pip install flask_wtf`
+## Install
 
-## Features
+```bash
+cd /opt/ctf
+git clone https://github.com/<you>/CTFd-Docker-Challenges.git
+cp -r CTFd-Docker-Challenges/docker_challenges CTFd/CTFd/plugins/
+cd CTFd && sudo docker compose restart ctfd
+```
 
-* Allows players to spawn their own docker container for docker challenges.
-* 5 minute revert timer.
-* 2 hour stale container nuke.
-* Status panel for Admins to manage docker containers currently active.
-* Support for client side validation TLS docker api connections (HIGHLY RECOMMENDED).
-* Docker container kill on solve.
-* (Mostly) Seamless integration with CTFd.
-* **Untested**: _Should_ be able to seamlessly integrate with other challenge types.
+Use a **fresh database**. This fork uses new table names, so it won't pick up data from the upstream plugin.
 
-## Installation / Configuration
+## Set up a challenge server
 
-* Drop the folder `docker_challenges` into `CTFd/CTFd/plugins` (Exactly this name).
-* Restart CTFd.
-* Navigate to `/admin/docker_config`. Add your configuration information. Click Submit.
-* Add your required repositories for this CTF. You can select multiple by holding CTRL when clicking. Click Submit.
-* Click Challenges, Select `docker` for challenge type. Create a challenge as normal, but select the correct docker tag for this challenge.
-* Double check the front end shows "Start Docker Instance" on the challenge.
-* Confirm users are able to start/revert and access docker challenges.
-* For web challenges, configure http://host:port in the connection field, this is changed automagically when the docker is started
-* Host an awesome CTF!
+On each challenge server (Docker already installed):
 
-### Update: 20210206
-Works with 3.2.1
+```bash
+sudo ./setup-docker-tls.sh <private-ip>
+```
 
-* Updated the entire plugin to work with the new CTFd.
+This turns on the Docker API on port 2376 with TLS + client certs, and puts `ca.pem`, `cert.pem`, `key.pem` in `~/docker-client-certs/`.
+Firewall: 2376 only from the CTFd server, the player port range open to players.
 
-### Update: 20250507
-Works with 3.7.7 and added features:
-* Proper check for duplicate containers, a user can run only one at a time.
-* Added stop container function.
-* Enhanced the Status panel for Admins.
-* Some GUI enhancements
-* Improved error handling
+## Add servers in CTFd
 
-#### Credits
+**Admin → Plugins → Docker Config → + Add host**
 
-* https://github.com/offsecginger (Twitter: @offsec_ginger)
-* Jaime Geiger (For Original Plugin assistance) (Twitter: @jgeigerm)
+| Field | Example |
+|---|---|
+| Name | `web-srv` |
+| Docker API address | `10.148.0.5:2376` (private IP) |
+| Public address | `chal1.example.com` or the public IP |
+| Port min / max | `30000` / `31000` (must match firewall) |
+| Limits | 256 MB, 0.5 CPU, 256 processes |
+| TLS | Yes + upload the 3 files |
+
+Save, then pick the **allowed repositories** and save again.
+
+## Create a challenge
+
+**Challenges → New → type `docker`** → pick **Docker Host**, then **Docker Image**.
+Connection info: `http://host:port` or `nc host port`. `host` and `port` get filled in for each player.
+
+## Tested
+
+69 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, port ranges, limits, one-container rule, solve cleanup, admin nuke, dead host, challenge delete.

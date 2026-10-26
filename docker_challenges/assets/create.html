@@ -3,15 +3,19 @@
 <div class="form-group">
     <label>
         Category:<br>
-        <small class="form-text text-muted">
-            The category of your challenge
-        </small>
+        <small class="form-text text-muted">The category of your challenge</small>
     </label>
     <input type="text" class="form-control" name="category" placeholder="Enter challenge category">
 </div>
 <div class="form-group">
-    <label for="DockerImage" id='dockerimage_label'>Docker Image:
-        <i class="far fa-question-circle text-muted cursor-help" data-toggle="tooltip" data-placement="right" title="The docker image for your challenge"></i>
+    <label for="dockerhost_select">Docker Host:
+        <small class="form-text text-muted">Which challenge server runs this challenge</small>
+    </label>
+    <select id="dockerhost_select" name="docker_host_id" class="form-control" required></select>
+</div>
+<div class="form-group">
+    <label for="dockerimage_select" id="dockerimage_label">Docker Image:
+        <small class="form-text text-muted">Image on the selected host (only repos allowed in Docker Config)</small>
     </label>
     <select id="dockerimage_select" name="docker_image" class="form-control" required></select>
 </div>

@@ -1,9 +1,9 @@
 {% extends "challenge.html" %}
 {% block description %}
 {{ challenge.html }}
-<div class='mb-3 text-center' id='docker_container' name='{{ challenge.docker_image | safe }}'>
+<div class='mb-3 text-center' id='docker_container'>
     <span>
-        <a onclick="start_container('{{ challenge.docker_image | safe }}');" class='btn btn-dark'>
+        <a onclick="start_container();" class='btn btn-dark'>
             <small style='color:white;'><i class="fas fa-play"></i>  Start Docker Instance for challenge</small>
         </a>
     </span>
