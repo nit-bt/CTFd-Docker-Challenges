@@ -13,6 +13,22 @@ set -euo pipefail
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
 if [[ $# -lt 1 ]]; then echo "Usage: sudo $0 <private-ip> [extra-ip-or-dns ...]"; exit 1; fi
 
+if ! systemctl cat docker.service >/dev/null 2>&1; then
+  echo "Docker isn't installed on this server yet."
+  echo "Install it first (ctf-infra: scripts/install-docker.sh), then rerun this."
+  exit 1
+fi
+
+# The first IP must belong to THIS machine, or CTFd's TLS check will fail later
+LOCAL_IPS=" $(hostname -I) "
+if [[ $1 =~ ^[0-9.]+$ && $LOCAL_IPS != *" $1 "* ]]; then
+  echo "!! $1 is not an IP of this machine."
+  echo "   This machine has:$LOCAL_IPS"
+  echo "   Use this server's own private IP (first one from 'hostname -I')."
+  read -r -p "Continue anyway? [y/N] " answer || answer=n
+  [[ $answer == y || $answer == Y ]] || exit 1
+fi
+
 TLS_DIR=/etc/docker/tls
 REAL_USER=${SUDO_USER:-root}
 REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
