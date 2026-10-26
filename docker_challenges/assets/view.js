@@ -75,24 +75,27 @@ function get_docker_status() {
                 });
             }
 
-            // Countdown until stop/revert is allowed
+            // Stop is available right away; Revert after the countdown
+            var stopBtn = '<a onclick="stop_container();" class="btn btn-danger">' +
+                '<small style="color:white;"><i class="fas fa-stop"></i> Stop</small></a>';
+            var revertBtn = '<a onclick="start_container();" class="btn btn-dark">' +
+                '<small style="color:white;"><i class="fas fa-redo"></i> Revert</small></a> ';
             var countDownDate = new Date(parseInt(item.revert_time) * 1000).getTime();
-            var x = setInterval(function() {
+            var tick = function() {
                 var distance = countDownDate - new Date().getTime();
+                if (distance <= 0) {
+                    clearInterval(x);
+                    CTFd.lib.$("#" + revertId).html(revertBtn + stopBtn);
+                    return;
+                }
                 var minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                 var seconds = Math.floor((distance % (1000 * 60)) / 1000);
                 if (seconds < 10) { seconds = "0" + seconds; }
-                CTFd.lib.$("#" + revertId).html('Stop or Revert Available in ' + minutes + ':' + seconds);
-                if (distance < 0) {
-                    clearInterval(x);
-                    CTFd.lib.$("#" + revertId).html(
-                        '<a onclick="start_container();" class="btn btn-dark">' +
-                        '<small style="color:white;"><i class="fas fa-redo"></i> Revert</small></a> ' +
-                        '<a onclick="stop_container();" class="btn btn-dark">' +
-                        '<small style="color:white;"><i class="fas fa-stop"></i> Stop</small></a>'
-                    );
-                }
-            }, 1000);
+                CTFd.lib.$("#" + revertId).html(stopBtn +
+                    '<div class="mt-1"><small>Revert available in ' + minutes + ':' + seconds + '</small></div>');
+            };
+            var x = setInterval(tick, 1000);
+            tick();
         });
     })
     .catch(error => {
@@ -140,7 +143,7 @@ function start_container() {
                 get_docker_status();
                 updateWarningModal({
                     title: "Attention!",
-                    warningText: "A Docker container is started for you.<br>Note that you can only revert or stop a container once per 5 minutes!",
+                    warningText: "A Docker container is started for you.<br>You can stop it any time. Revert is available after 5 minutes.",
                     buttonText: "Got it!"
                 });
             } else {

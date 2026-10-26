@@ -14,7 +14,10 @@ Lets players spin up their own container per challenge, and lets you spread chal
 | Teams mode | "One container" check crashes | Works (one container per team) |
 | Dead server | Can hang CTFd | 10s timeout, clean error, UP/DOWN shown in admin |
 
-Unchanged: one container per user/team at a time, stop/revert after 5 min, auto-remove after 2h, container killed on solve, admin status page.
+| Stop | Only after 5 min | Any time (30s cooldown before restarting that challenge) |
+| Hidden challenges | Can't be tested | Admins can start instances to test before publishing |
+
+Unchanged: one container per user/team at a time, revert after 5 min, auto-remove after 2h, container killed on solve, admin status page.
 
 ## Install
 
@@ -60,4 +63,4 @@ Connection info: `http://host:port` or `nc host port`. `host` and `port` get fil
 
 ## Tested
 
-69 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, port ranges, limits, one-container rule, solve cleanup, admin nuke, dead host, challenge delete.
+73 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, dead host, challenge delete.

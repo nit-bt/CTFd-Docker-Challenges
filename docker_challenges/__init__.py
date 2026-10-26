@@ -26,6 +26,7 @@ from flask import Blueprint, abort, redirect, render_template, request, url_for
 from flask_restx import Namespace, Resource
 
 from CTFd.api import CTFd_API_v1
+from CTFd.cache import cache
 from CTFd.forms import BaseForm
 from CTFd.models import (
     ChallengeFiles,
@@ -51,6 +52,7 @@ from CTFd.utils.user import get_current_team, get_current_user, get_ip, is_admin
 API_TIMEOUT = 10          # seconds for any Docker API call
 REVERT_SECONDS = 300      # player can stop/revert after 5 min
 STALE_SECONDS = 7200      # containers older than 2h are removed
+START_COOLDOWN = 30       # seconds before a player can start again after stopping
 
 
 # --------------------------------------------------------------------------- #
@@ -498,13 +500,25 @@ class ContainerAPI(Resource):
 
         check = owner_filter(DockerChallengeTracker.query, owner.id).filter_by(challenge_id=chal.id).first()
 
-        if check is not None and now - int(check.timestamp) < REVERT_SECONDS:
-            return abort(403, "To prevent abuse, containers can be reverted or stopped 5 minutes after creation.")
-        if check is not None and request.args.get("stopcontainer"):
+        cooldown_key = "docker_cooldown_%s_%s_%s" % ("team" if is_teams_mode() else "user", owner.id, chal.id)
+
+        # Stop: allowed any time
+        if request.args.get("stopcontainer"):
+            if check is None:
+                return abort(403, "No running container for this challenge")
             remove_tracked(check)
+            cache.set(cooldown_key, now + START_COOLDOWN, timeout=START_COOLDOWN)
             return {"success": True, "result": "Container stopped"}
-        if check is not None:  # revert
+
+        # Revert: only after 5 min
+        if check is not None and now - int(check.timestamp) < REVERT_SECONDS:
+            return abort(403, "To prevent abuse, containers can be reverted 5 minutes after creation. You can stop it any time.")
+        if check is not None:
             remove_tracked(check)
+        else:
+            ready_at = cache.get(cooldown_key)
+            if ready_at and int(ready_at) > now:
+                return abort(403, "Please wait %d seconds before starting a new container." % (int(ready_at) - now))
 
         other = owner_filter(DockerChallengeTracker.query, owner.id).first()
         if other is not None:
