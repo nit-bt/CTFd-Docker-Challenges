@@ -117,6 +117,7 @@ function stop_container() {
                         title: "Attention!",
                         warningText: "The Docker container for <br><strong>" + CTFd._internal.challenge.data.name + "</strong><br> was stopped successfully.",
                         buttonText: "Close",
+                        meme: "stopped",
                         onClose: function () { get_docker_status(); }
                     });
                 } else {
@@ -129,6 +130,7 @@ function stop_container() {
                 title: "Error",
                 warningText: error.message || "An unknown error occurred while stopping the container.",
                 buttonText: "Close",
+                meme: docker_meme_for(error.message),
                 onClose: function () { get_docker_status(); }
             });
         });
@@ -148,7 +150,8 @@ function start_container() {
                 updateWarningModal({
                     title: "Attention!",
                     warningText: "A Docker container is started for you.<br>You can stop it any time. Revert unlocks after a few minutes.",
-                    buttonText: "Got it!"
+                    buttonText: "Got it!",
+                    meme: "started"
                 });
             } else {
                 throw new Error(json.message || 'Failed to start container');
@@ -159,15 +162,37 @@ function start_container() {
             title: "Error!",
             warningText: error.message || "An unknown error occurred when starting your Docker container.",
             buttonText: "Got it!",
+            meme: docker_meme_for(error.message),
             onClose: function () { get_docker_status(); }
         });
     });
 }
 
+// Optional images for the popups: drop e.g. memes/cooldown.png into the plugin's assets.
+var __dockerMemes = null;
+function docker_memes() {
+    if (!__dockerMemes) {
+        __dockerMemes = CTFd.fetch("/api/v1/docker_memes")
+            .then(function (r) { return r.json(); })
+            .then(function (j) { return j.data || {}; })
+            .catch(function () { return {}; });
+    }
+    return __dockerMemes;
+}
+
+function docker_meme_for(message) {
+    var m = String(message || "").toLowerCase();
+    if (m.indexOf("please wait") !== -1) return "cooldown";
+    if (m.indexOf("only run one container") !== -1) return "one-at-a-time";
+    if (m.indexOf("revert unlocks") !== -1) return "revert-wait";
+    if (m.indexOf("still running") !== -1) return "busy";
+    return "error";
+}
+
 // WE NEED TO CREATE THE MODAL FIRST, and this should be only used to fill it.
 
 function updateWarningModal({
-    title , warningText, buttonText, onClose } = {}) {
+    title , warningText, buttonText, onClose, meme } = {}) {
     const modalHTML = `
         <div id="warningModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background-color:rgba(0,0,0,0.5);">
           <div style="position:relative; margin:10% auto; width:400px; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3); overflow:hidden;">
@@ -175,7 +200,8 @@ function updateWarningModal({
               <h5 class="modal-title" style="margin:0;">${title}</h5>
               <button type="button" id="warningCloseBtn" style="border:none; background:none; font-size:1.5rem; line-height:1; cursor:pointer;">&times;</button>
             </div>
-            <div class="modal-body" style="padding:1rem;">
+            <div class="modal-body" style="padding:1rem; color:#212529;">
+              <div id="warningMeme" class="text-center"></div>
               ${warningText}
             </div>
             <div class="modal-footer" style="padding:1rem; text-align:right; border-top:1px solid #dee2e6;">
@@ -199,6 +225,19 @@ function updateWarningModal({
 
     CTFd.lib.$("#warningCloseBtn").on("click", closeModal);
     CTFd.lib.$("#warningOkBtn").on("click", closeModal);
+
+    if (meme) {
+        docker_memes().then(function (memes) {
+            if (!memes[meme]) return;
+            var img = document.createElement("img");
+            img.src = memes[meme];
+            img.alt = "";
+            img.style.cssText = "max-width:100%; max-height:220px; margin-bottom:0.75rem; border-radius:4px;";
+            img.onerror = function () { img.remove(); };
+            var slot = document.getElementById("warningMeme");
+            if (slot) slot.appendChild(img);
+        });
+    }
 }
 
 // In order to capture the flag submission, and remove the "Revert" and "Stop" buttons after solving a challenge

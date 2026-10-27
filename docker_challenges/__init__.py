@@ -14,6 +14,7 @@ Changes vs upstream:
 """
 import hashlib
 import json
+import os
 import random
 import re
 import tempfile
@@ -822,6 +823,28 @@ class DockerHostsAPI(Resource):
         return {"success": True, "data": [{"id": h.id, "name": h.name, "public_host": h.display_host} for h in hosts]}
 
 
+memes_namespace = Namespace("docker_memes", description="Optional images shown in the player popups")
+
+MEME_KEYS = ("started", "stopped", "cooldown", "one-at-a-time", "revert-wait", "busy", "error")
+MEME_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
+MEME_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "memes")
+
+
+@memes_namespace.route("", methods=["GET"])
+class DockerMemesAPI(Resource):
+    @authed_only
+    def get(self):
+        """{popup name: image URL} for every popup that has an image in assets/memes/."""
+        found = {}
+        for key in MEME_KEYS:
+            for ext in MEME_EXTS:
+                path = os.path.join(MEME_DIR, "%s.%s" % (key, ext))
+                if os.path.isfile(path):
+                    found[key] = "/plugins/docker_challenges/assets/memes/%s.%s?v=%d" % (key, ext, int(os.path.getmtime(path)))
+                    break
+        return {"success": True, "data": found}
+
+
 kill_container = Namespace("nuke", description="Admin: kill containers")
 
 
@@ -896,3 +919,4 @@ def load(app):
     CTFd_API_v1.add_namespace(container_namespace, "/container")
     CTFd_API_v1.add_namespace(active_docker_namespace, "/docker_status")
     CTFd_API_v1.add_namespace(kill_container, "/nuke")
+    CTFd_API_v1.add_namespace(memes_namespace, "/docker_memes")

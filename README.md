@@ -93,6 +93,10 @@ Save, then pick the **allowed repositories** and save again.
 **Challenges → New → type `docker`** → pick **Docker Host**, then **Docker Image**.
 Connection info: `http://host:port` or `nc host port`. `host` and `port` get filled in for each player.
 
+## Popup images (optional)
+
+Drop an image into `docker_challenges/assets/memes/`, named after the popup, and players see it above the popup text: `started`, `stopped`, `cooldown`, `one-at-a-time`, `revert-wait`, `busy`, `error` (`.png` `.jpg` `.webp` `.gif`). No file = plain popup. Details in that folder's README.
+
 ## Load test
 
 On the platform server, with an admin access token (CTFd → Settings → Access Tokens):
@@ -107,6 +111,6 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 
 ## Tested
 
-184 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database.
+192 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.
