@@ -233,6 +233,10 @@ def run_users_mode():
 
         r = admin.post("/api/v1/nuke", json={"all": True})
         check(r.status_code == 200 and len(fake(2401)["containers"]) == 0, "nuke all clears host A")
+        j = r.get_json() or {}
+        check(isinstance(j, dict) and j.get("removed", 0) >= 1 and j.get("failed") == 0, "nuke all reports removed/failed counts %s" % j)
+        from CTFd.plugins.docker_challenges import DockerChallengeTracker as _T
+        check(_T.query.count() == 0, "nuke all clears every tracker row")
 
         # host down -> fast clean error, not a hang
         admin.post("/admin/docker_config?id=1",
@@ -602,6 +606,11 @@ def run_memes():
         from CTFd.plugins import docker_challenges as dc
         d = dc.MEME_DIR
         made = []
+        import shutil, tempfile
+        aside = tempfile.mkdtemp()          # real memes shipped with the plugin: move away during the test
+        real = [f for f in os.listdir(d) if f.split(".")[-1] in dc.MEME_EXTS]
+        for f in real:
+            shutil.move(os.path.join(d, f), os.path.join(aside, f))
         try:
             r = hank.get("/api/v1/docker_memes")
             check(r.status_code == 200 and r.get_json()["data"] == {"solved_list": []}, "no images -> empty list (plain popups)")
@@ -625,6 +634,8 @@ def run_memes():
         finally:
             for name in made:
                 os.remove(os.path.join(d, name))
+            for f in real:
+                shutil.move(os.path.join(aside, f), os.path.join(d, f))
     destroy_ctfd(app)
 
 

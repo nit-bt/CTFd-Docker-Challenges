@@ -19,6 +19,7 @@ import random
 import re
 import tempfile
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +62,8 @@ START_ATTEMPTS = 3        # retries with fresh ports if Docker says a port is ta
 SWEEP_EVERY = 60          # global stale-container sweep runs at most once per this many seconds
 SWEEP_BATCH = 25          # max containers removed per sweep (keeps one request from taking long)
 SWEEP_TIMEOUT = 3         # Docker API timeout used by the sweep
+NUKE_TIMEOUT = 8          # per container when an admin removes everything (done in parallel)
+NUKE_PARALLEL = 16
 ALIVE_TIMEOUT = 3         # Docker API timeout when checking a player's container is still running
 
 
@@ -349,6 +352,36 @@ def remove_tracked(entry):
     delete_container(get_host(entry.host_id), entry.instance_id)
     DockerChallengeTracker.query.filter_by(id=entry.id).delete()
     db.session.commit()
+
+
+def nuke_all():
+    """Admin "Nuke All": remove every tracked container, in parallel, even if a host is overloaded.
+
+    Docker calls run side by side (one slow or dead host can't hold up the rest) with a short
+    timeout; tracker rows are dropped either way, the sweep / dead-instance check catch any leftover.
+    Returns (removed, failed).
+    """
+    entries = DockerChallengeTracker.query.all()
+    if not entries:
+        return 0, 0
+    hosts = {}
+    jobs = []
+    for t in entries:
+        if t.host_id not in hosts:
+            hosts[t.host_id] = get_host(t.host_id)
+        jobs.append((hosts[t.host_id], t.instance_id))
+
+    def kill(job):
+        host, instance_id = job
+        return host is not None and delete_container(host, instance_id, timeout=NUKE_TIMEOUT)
+
+    with ThreadPoolExecutor(max_workers=min(NUKE_PARALLEL, len(jobs))) as ex:
+        results = list(ex.map(kill, jobs))
+    ids = [t.id for t in entries]
+    DockerChallengeTracker.query.filter(DockerChallengeTracker.id.in_(ids)).delete(synchronize_session=False)
+    db.session.commit()
+    failed = results.count(False)
+    return len(results) - failed, failed
 
 
 def sweep_stale(force=False):
@@ -863,9 +896,8 @@ class KillContainerAPI(Resource):
     def post(self):
         container = req_arg("container")
         if req_arg("all") is True:
-            for t in DockerChallengeTracker.query.all():
-                remove_tracked(t)
-            return True
+            removed, failed = nuke_all()
+            return {"success": True, "removed": removed, "failed": failed}
         t = DockerChallengeTracker.query.filter_by(instance_id=container).first()
         if t is None:
             return False

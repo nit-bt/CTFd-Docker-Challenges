@@ -47,7 +47,8 @@
                 </tbody>
             </table>
             <div class='text-center'>
-                <button type="button" class="btn btn-danger" onclick="check_nuke_container(null, true)">Nuke All Containers</button>
+                <button type="button" class="btn btn-danger" id="nuke-all-btn" onclick="check_nuke_container(null, true)">Nuke All Containers</button>
+                <div id="nuke-all-msg" class="mt-2"></div>
             </div>
             {% else %}
             <h3 class='text-center'> No Docker Containers Active</h3>
@@ -105,6 +106,12 @@ function check_nuke_container(instance, all) {
 }
 
 function nuke_container(instance, all) {
+    var btn = document.getElementById("nuke-all-btn"), msg = document.getElementById("nuke-all-msg");
+    if (all === true && btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Removing all containers...';
+        msg.textContent = "This can take up to ~30 s if a server is overloaded. Don't close the page.";
+    }
     fetch("{{ request.script_root }}/api/v1/nuke", {
         method: "POST",
         credentials: "same-origin",
@@ -117,12 +124,18 @@ function nuke_container(instance, all) {
     }).then(function (r) {
         if (!r.ok) { throw new Error(r.status); }
         if (all === true) {
-            window.location.reload();
+            return r.json().then(function (j) {
+                msg.textContent = "Removed " + (j.removed || 0) + " container(s)" +
+                    (j.failed ? ", " + j.failed + " could not be reached (their records were cleared; the cleanup removes them once the server answers)." : ".");
+                setTimeout(function () { window.location.reload(); }, 1500);
+            });
         } else {
             document.getElementById("tr_" + instance).style.display = "none";
         }
-    }).catch(function () {
-        ezal({ title: "Attention!", body: "Error when deleting Docker container", button: "Got it!" });
+    }).catch(function (e) {
+        if (all === true && btn) { btn.disabled = false; btn.textContent = "Nuke All Containers"; msg.textContent = ""; }
+        ezal({ title: "Attention!", body: "Error when deleting Docker container (" + e.message + "). " +
+              "Server overloaded? On the challenge server: sudo docker rm -f $(sudo docker ps -q)", button: "Got it!" });
     });
 }
 </script>

@@ -1,7 +1,7 @@
 # Plugin tests
 
 End-to-end tests for the multi-host fork, run against a real CTFd checkout and two fake Docker hosts
-(no real Docker needed). 195 checks: users mode, teams mode, port clashes, sweep, locks, dead instances,
+(no real Docker needed). 197 checks: users mode, teams mode, port clashes, sweep, locks, dead instances,
 per-host time settings, DB upgrade, popup images.
 
 ## Run
@@ -21,7 +21,7 @@ cp ../CTFd-Docker-Challenges/tests/*.py .
 ../venv/bin/python fake_docker.py B 2402 "$(realpath ../certs)"
 
 # 4. tests
-PYTHONPATH=. ../venv/bin/python test_multihost.py     # ends with: RESULT: 195 passed, 0 failed
+PYTHONPATH=. ../venv/bin/python test_multihost.py     # ends with: RESULT: 197 passed, 0 failed
 ```
 
 Restart the fake hosts between runs if a run was interrupted (leftover containers break the counts).

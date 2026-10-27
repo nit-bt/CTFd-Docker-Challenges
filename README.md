@@ -111,7 +111,7 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 
 ## Tested
 
-195 end-to-end checks on CTFd 3.7.7 (`tests/`) (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
+197 end-to-end checks on CTFd 3.7.7 (`tests/`) (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.
 
