@@ -86,6 +86,18 @@ Save, then pick the **allowed repositories** and save again.
 **Challenges → New → type `docker`** → pick **Docker Host**, then **Docker Image**.
 Connection info: `http://host:port` or `nc host port`. `host` and `port` get filled in for each player.
 
+## Load test
+
+On the platform server, with an admin access token (CTFd → Settings → Access Tokens):
+
+```bash
+export CTFD_TOKEN=ctfd_xxx
+python3 tools/load-test.py                 # 25 hidden fake players press Start at once
+```
+
+Reports how many started, how long each took, whether each instance answers, and how they spread over the hosts. Then stops them all. Users mode only.
+If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-private-ip>`. `--delete-users` removes the fake players afterwards. `--help` for the rest.
+
 ## Tested
 
 79 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete.
