@@ -15,11 +15,14 @@ Lets players spin up their own container per challenge, and lets you spread chal
 | Dead server | Can hang CTFd | 10s timeout, clean error, UP/DOWN shown in admin |
 
 | Stop | Only after 5 min | Any time (30s cooldown before restarting that challenge) |
+| Old containers (2 h+) | Removed only when the *same* player starts another one, so abandoned ones run forever | Removed for **everyone**, checked at most once a minute whenever anyone uses a docker challenge, and every time an admin opens Docker Status |
+| Busy starts (many players at once) | Two players can get the same random port → "driver failed programming external connectivity" | Ports reserved in Redis first (atomic), plus up to 3 retries with fresh ports if Docker still says a port is taken |
+| Double-click Start | Can create 2 containers | One request at a time per player/team; a second one gets "still running, try again" |
 | Hidden challenges | Can't be tested | Admins can start instances to test before publishing |
 | Start / stop / nuke | GET (a malicious link could trigger it) | POST + CSRF token |
 | Privilege escalation in containers | Allowed | `no-new-privileges` |
 
-Unchanged: one container per user/team at a time, revert after 5 min, auto-remove after 2h, container killed on solve, admin status page.
+Unchanged: one container per user/team at a time, revert after 5 min, container killed on solve, admin status page.
 
 ## Install
 
@@ -100,6 +103,6 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 
 ## Tested
 
-79 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete.
+115 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.

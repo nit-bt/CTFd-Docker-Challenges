@@ -53,6 +53,11 @@ API_TIMEOUT = 10          # seconds for any Docker API call
 REVERT_SECONDS = 300      # player can stop/revert after 5 min
 STALE_SECONDS = 7200      # containers older than 2h are removed
 START_COOLDOWN = 30       # seconds before a player can start again after stopping
+PORT_HOLD = 120           # a picked port stays reserved this long, so parallel starts can't pick it too
+START_ATTEMPTS = 3        # retries with fresh ports if Docker says a port is taken
+SWEEP_EVERY = 60          # global stale-container sweep runs at most once per this many seconds
+SWEEP_BATCH = 25          # max containers removed per sweep (keeps one request from taking long)
+SWEEP_TIMEOUT = 3         # Docker API timeout used by the sweep
 
 
 # --------------------------------------------------------------------------- #
@@ -142,13 +147,13 @@ def _to_text(value):
     return value
 
 
-def do_request(docker, path, method="GET", data=None, headers=None):
+def do_request(docker, path, method="GET", data=None, headers=None, timeout=API_TIMEOUT):
     """Call the Docker API on one host. Returns a requests.Response or raises DockerError."""
     if docker is None or not docker.hostname:
         raise DockerError("Docker host not configured")
     prefix = "https" if docker.tls_enabled else "http"
     url = "%s://%s%s" % (prefix, docker.hostname, path)
-    kwargs = {"headers": headers, "timeout": API_TIMEOUT}
+    kwargs = {"headers": headers, "timeout": timeout}
     if data is not None:
         kwargs["data"] = data
     tmp_files = []
@@ -203,61 +208,88 @@ def get_required_ports(docker, image):
     return list(exposed.keys())
 
 
+PORT_CLASH_HINTS = ("port is already allocated", "address already in use", "external connectivity", "networking")
+
+
+def reserve_ports(docker, count, exclude):
+    """Pick `count` free ports and reserve them in the shared cache.
+
+    cache.add is atomic (Redis SETNX), so two starts running at the same time
+    on any worker can never be handed the same port.
+    """
+    used = get_unavailable_ports(docker) | exclude
+    pmin, pmax = int(docker.port_min or 30000), int(docker.port_max or 31000)
+    free = [p for p in range(pmin, pmax + 1) if p not in used]
+    random.shuffle(free)
+    chosen = []
+    for p in free:
+        if cache.add("docker_port_%s_%s" % (docker.id, p), 1, timeout=PORT_HOLD):
+            chosen.append(p)
+            if len(chosen) == count:
+                return chosen
+    raise DockerError("No free ports left on host %s" % docker.name)
+
+
 def create_container(docker, image, owner_name):
     """Create and start a container. Returns (container_id, [host ports])."""
     needed = get_required_ports(docker, image)
-    used = get_unavailable_ports(docker)
-    pmin, pmax = int(docker.port_min or 30000), int(docker.port_max or 31000)
-    free = [p for p in range(pmin, pmax + 1) if p not in used]
-    if len(free) < len(needed):
-        raise DockerError("No free ports left on host %s" % docker.name)
-    chosen = random.sample(free, len(needed))
 
-    exposed, bindings = {}, {}
-    for container_port, host_port in zip(needed, chosen):
-        exposed[container_port] = {}
-        bindings[container_port] = [{"HostPort": str(host_port)}]
-
-    host_config = {"PortBindings": bindings, "SecurityOpt": ["no-new-privileges"]}
+    host_config_base = {"SecurityOpt": ["no-new-privileges"]}
     if docker.mem_limit_mb:
-        host_config["Memory"] = int(docker.mem_limit_mb) * 1024 * 1024
+        host_config_base["Memory"] = int(docker.mem_limit_mb) * 1024 * 1024
     if docker.cpu_limit:
-        host_config["NanoCpus"] = int(float(docker.cpu_limit) * 1e9)
+        host_config_base["NanoCpus"] = int(float(docker.cpu_limit) * 1e9)
     if docker.pids_limit:
-        host_config["PidsLimit"] = int(docker.pids_limit)
+        host_config_base["PidsLimit"] = int(docker.pids_limit)
 
     owner = hashlib.md5(owner_name.encode("utf-8")).hexdigest()[:10]
     safe_image = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
     name = "%s_%s" % (safe_image, owner)
-
     headers = {"Content-Type": "application/json"}
-    payload = json.dumps({"Image": image, "ExposedPorts": exposed, "HostConfig": host_config})
 
-    # Remove a leftover container with the same name (e.g. after a CTFd restart)
-    do_request(docker, "/containers/%s?force=true" % name, method="DELETE", headers=headers)
+    tried = set()
+    last_error = None
+    for attempt in range(START_ATTEMPTS):
+        chosen = reserve_ports(docker, len(needed), tried)
+        tried.update(chosen)
+        exposed, bindings = {}, {}
+        for container_port, host_port in zip(needed, chosen):
+            exposed[container_port] = {}
+            bindings[container_port] = [{"HostPort": str(host_port)}]
+        host_config = dict(host_config_base, PortBindings=bindings)
+        payload = json.dumps({"Image": image, "ExposedPorts": exposed, "HostConfig": host_config})
 
-    r = do_request(docker, "/containers/create?name=%s" % name, method="POST", data=payload, headers=headers)
-    if r.status_code not in (200, 201):
-        raise DockerError("Create failed on %s: %s" % (docker.name, r.text[:200]))
-    cid = r.json()["Id"]
-    s = do_request(docker, "/containers/%s/start" % cid, method="POST", headers=headers)
-    if s.status_code not in (204, 304):
+        # Remove a leftover container with the same name (CTFd restart, failed attempt)
+        do_request(docker, "/containers/%s?force=true" % name, method="DELETE", headers=headers)
+
+        r = do_request(docker, "/containers/create?name=%s" % name, method="POST", data=payload, headers=headers)
+        if r.status_code not in (200, 201):
+            raise DockerError("Create failed on %s: %s" % (docker.name, r.text[:200]))
+        cid = r.json()["Id"]
+        st = do_request(docker, "/containers/%s/start" % cid, method="POST", headers=headers)
+        if st.status_code in (204, 304):
+            return cid, chosen
         delete_container(docker, cid)
-        raise DockerError("Start failed on %s: %s" % (docker.name, s.text[:200]))
-    return cid, chosen
+        last_error = st.text[:200]
+        if not any(h in st.text.lower() for h in PORT_CLASH_HINTS):
+            break  # not a port problem, retrying won't help
+    raise DockerError("Start failed on %s: %s" % (docker.name, last_error))
 
 
-def delete_container(docker, instance_id):
+def delete_container(docker, instance_id, timeout=API_TIMEOUT):
+    """Force-remove a container. Returns False if the host couldn't be reached."""
     try:
         do_request(
             docker,
             "/containers/%s?force=true" % instance_id,
             method="DELETE",
             headers={"Content-Type": "application/json"},
+            timeout=timeout,
         )
+        return True
     except DockerError:
         traceback.print_exc()
-    return True
+        return False
 
 
 def remove_tracked(entry):
@@ -265,6 +297,35 @@ def remove_tracked(entry):
     delete_container(get_host(entry.host_id), entry.instance_id)
     DockerChallengeTracker.query.filter_by(id=entry.id).delete()
     db.session.commit()
+
+
+def sweep_stale(force=False):
+    """Remove EVERY player's containers older than STALE_SECONDS.
+
+    Runs as a side effect of normal traffic (players opening docker challenges,
+    starting containers, admins opening Docker Status), at most once per
+    SWEEP_EVERY seconds across all workers. A host that can't be reached is
+    skipped for the rest of the sweep; its tracker rows are still dropped.
+    """
+    if not force and not cache.add("docker_sweep_lock", 1, timeout=SWEEP_EVERY):
+        return 0
+    cutoff = unix_time(datetime.utcnow()) - STALE_SECONDS
+    stale = (
+        DockerChallengeTracker.query.filter(DockerChallengeTracker.timestamp <= cutoff)
+        .order_by(DockerChallengeTracker.timestamp)
+        .limit(SWEEP_BATCH)
+        .all()
+    )
+    dead_hosts = set()
+    for t in stale:
+        if t.host_id not in dead_hosts:
+            host = get_host(t.host_id)
+            if host is None or not delete_container(host, t.instance_id, timeout=SWEEP_TIMEOUT):
+                dead_hosts.add(t.host_id)
+        DockerChallengeTracker.query.filter_by(id=t.id).delete()
+    if stale:
+        db.session.commit()
+    return len(stale)
 
 
 def req_arg(name):
@@ -375,6 +436,7 @@ def define_docker_status(app):
     @bp.route("/admin/docker_status", methods=["GET"])
     @admins_only
     def docker_admin():
+        sweep_stale(force=True)
         hosts = {h.id: h.name for h in DockerConfig.query.all()}
         rows = []
         for t in DockerChallengeTracker.query.all():
@@ -499,6 +561,19 @@ class ContainerAPI(Resource):
                 return abort(403, "You need a team first")
         else:
             owner = get_current_user()
+
+        # One start/stop/revert at a time per player (or team): stops double-clicks
+        # and two teammates from creating two containers at once.
+        lock_key = "docker_owner_lock_%s_%s" % ("team" if is_teams_mode() else "user", owner.id)
+        if not cache.add(lock_key, 1, timeout=60):
+            return abort(429, "Your previous request is still running, try again in a few seconds.")
+        try:
+            return self._handle(chal, docker, owner)
+        finally:
+            cache.delete(lock_key)
+
+    def _handle(self, chal, docker, owner):
+        sweep_stale()
         now = unix_time(datetime.utcnow())
 
         # Remove this owner's stale containers (2h+)
@@ -570,6 +645,7 @@ active_docker_namespace = Namespace("docker_status", description="Current user's
 class DockerStatus(Resource):
     @authed_only
     def get(self):
+        sweep_stale()
         if is_teams_mode():
             owner = get_current_team()
             if owner is None:
