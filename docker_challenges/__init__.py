@@ -58,6 +58,7 @@ START_ATTEMPTS = 3        # retries with fresh ports if Docker says a port is ta
 SWEEP_EVERY = 60          # global stale-container sweep runs at most once per this many seconds
 SWEEP_BATCH = 25          # max containers removed per sweep (keeps one request from taking long)
 SWEEP_TIMEOUT = 3         # Docker API timeout used by the sweep
+ALIVE_TIMEOUT = 3         # Docker API timeout when checking a player's container is still running
 
 
 # --------------------------------------------------------------------------- #
@@ -173,13 +174,35 @@ def do_request(docker, path, method="GET", data=None, headers=None, timeout=API_
             Path(p).unlink(missing_ok=True)
 
 
+def get_json(docker, path, timeout=API_TIMEOUT):
+    """GET a Docker API path and return parsed JSON.
+
+    Read-only, so one retry on a server error or garbled answer (Docker can
+    hiccup under heavy load). Anything still wrong becomes a DockerError, which
+    callers turn into a clean message for the player instead of a crash.
+    """
+    last = None
+    for _ in range(2):
+        r = do_request(docker, path, timeout=timeout)
+        if r.status_code == 200:
+            try:
+                return r.json()
+            except ValueError:
+                last = "unreadable answer"
+        else:
+            last = "HTTP %s: %s" % (r.status_code, r.text[:120])
+            if r.status_code < 500:
+                break
+    raise DockerError("Docker on %s returned an error for %s (%s)" % (docker.name, path.split("?")[0], last))
+
+
 def get_repositories(docker, tags=False, repos=None):
-    r = do_request(docker, "/images/json?all=1")
+    images = get_json(docker, "/images/json?all=1")
     allowed = None
     if repos:
         allowed = set(x for x in repos.split(",") if x) if isinstance(repos, str) else set(repos)
     result = set()
-    for img in r.json():
+    for img in images:
         for tag in img.get("RepoTags") or []:
             repo = tag.rsplit(":", 1)[0]
             if repo == "<none>":
@@ -191,9 +214,8 @@ def get_repositories(docker, tags=False, repos=None):
 
 
 def get_unavailable_ports(docker):
-    r = do_request(docker, "/containers/json?all=1")
     used = set()
-    for c in r.json():
+    for c in get_json(docker, "/containers/json?all=1"):
         for p in c.get("Ports") or []:
             if p.get("PublicPort"):
                 used.add(int(p["PublicPort"]))
@@ -204,7 +226,11 @@ def get_required_ports(docker, image):
     r = do_request(docker, "/images/%s/json" % requests.utils.quote(image, safe=""))
     if r.status_code != 200:
         raise DockerError("Image %s not found on host %s" % (image, docker.name))
-    exposed = (r.json().get("Config") or {}).get("ExposedPorts") or {}
+    try:
+        info = r.json()
+    except ValueError:
+        raise DockerError("Unreadable image info for %s on %s" % (image, docker.name))
+    exposed = (info.get("Config") or {}).get("ExposedPorts") or {}
     return list(exposed.keys())
 
 
@@ -265,7 +291,10 @@ def create_container(docker, image, owner_name):
         r = do_request(docker, "/containers/create?name=%s" % name, method="POST", data=payload, headers=headers)
         if r.status_code not in (200, 201):
             raise DockerError("Create failed on %s: %s" % (docker.name, r.text[:200]))
-        cid = r.json()["Id"]
+        try:
+            cid = r.json()["Id"]
+        except (ValueError, KeyError):
+            raise DockerError("Unreadable answer creating container on %s" % docker.name)
         st = do_request(docker, "/containers/%s/start" % cid, method="POST", headers=headers)
         if st.status_code in (204, 304):
             return cid, chosen
@@ -326,6 +355,44 @@ def sweep_stale(force=False):
     if stale:
         db.session.commit()
     return len(stale)
+
+
+def container_alive(docker, instance_id):
+    """True = running, False = gone/stopped (OOM-killed, crashed, removed by hand),
+    None = can't tell (host unreachable)."""
+    try:
+        r = do_request(docker, "/containers/%s/json" % instance_id, timeout=ALIVE_TIMEOUT)
+    except DockerError:
+        return None
+    if r.status_code == 404:
+        return False
+    if r.status_code != 200:
+        return None
+    try:
+        state = r.json().get("State") or {}
+    except ValueError:
+        return None
+    return bool(state.get("Running") or state.get("Paused"))
+
+
+def prune_dead(owner_id):
+    """Forget this player's/team's containers that are no longer running.
+
+    Lets the player press Start again right away (no Stop, no cooldown) when
+    their instance died. Containers on unreachable hosts are left alone.
+    """
+    removed = 0
+    for t in owner_filter(DockerChallengeTracker.query, owner_id).all():
+        host = get_host(t.host_id)
+        if host is None:
+            continue
+        if container_alive(host, t.instance_id) is False:
+            delete_container(host, t.instance_id, timeout=ALIVE_TIMEOUT)  # remove the stopped leftover
+            DockerChallengeTracker.query.filter_by(id=t.id).delete()
+            removed += 1
+    if removed:
+        db.session.commit()
+    return removed
 
 
 def req_arg(name):
@@ -574,6 +641,7 @@ class ContainerAPI(Resource):
 
     def _handle(self, chal, docker, owner):
         sweep_stale()
+        prune_dead(owner.id)
         now = unix_time(datetime.utcnow())
 
         # Remove this owner's stale containers (2h+)
@@ -652,6 +720,7 @@ class DockerStatus(Resource):
                 return {"success": True, "data": []}
         else:
             owner = get_current_user()
+        prune_dead(owner.id)
         data = []
         for t in owner_filter(DockerChallengeTracker.query, owner.id).all():
             data.append(
