@@ -11,7 +11,7 @@ Lets players spin up their own container per challenge, and lets you spread chal
 | Address shown to players | The Docker API address (often a private IP) | Separate **public address** per server |
 | Player ports | Random 30000-60000 | Per-server range (default 30000-31000) |
 | Container limits | None | Per-server memory / CPU / max processes |
-| Instance times | Fixed in code (2 h lifetime, 5 min revert) | Per server on the Docker Config page: lifetime (0 = no limit), revert after, cooldown after Stop. Players see a countdown |
+| Instance times | Fixed in code (2 h lifetime, 5 min revert) | Per server on the Docker Config page: lifetime (0 = no limit), revert after, cooldown after Stop. Expiry is admin-only (Docker Status), players are not told |
 | Teams mode | "One container" check crashes | Works (one container per team) |
 | Dead server | Can hang CTFd | 10s timeout, clean error, UP/DOWN shown in admin |
 

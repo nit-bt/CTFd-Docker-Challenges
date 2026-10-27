@@ -784,7 +784,6 @@ class DockerStatus(Resource):
                     "docker_image": t.docker_image,
                     "timestamp": t.timestamp,
                     "revert_time": t.revert_time,
-                    "expires": t.expires,
                     "instance_id": t.instance_id,
                     "ports": t.ports.split(",") if t.ports else [],
                     "host": t.host,
