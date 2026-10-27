@@ -1,6 +1,6 @@
 # CTFd Docker Challenges (multi-host fork)
 
-Fork of [offsecginger/CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges) for **CTFd 3.7.7**.
+Based on [offsecginger/CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges) (GPL-3.0), extended for **CTFd 3.7.7**. See [Credits](#credits).
 Lets players spin up their own container per challenge, and lets you spread challenges across **several Docker servers**.
 
 ## What's different from upstream
@@ -114,3 +114,16 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 192 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.
+
+## Credits
+
+This plugin is built on **[CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges)** by
+**[offsecginger](https://github.com/offsecginger)** and its contributors (including
+[deurstijl](https://github.com/deurstijl)). The original does the core work: the docker challenge type,
+starting and reverting per-player containers, and the Docker API connection. This version adds
+multi-host support, limits, timers, cleanup, the firewall and the tooling on top.
+
+Thank you to everyone who worked on the original.
+
+Licensed under the **GNU GPL v3**, same as the original (see [LICENSE](LICENSE)). If you share this
+plugin, share its source under the same license.
