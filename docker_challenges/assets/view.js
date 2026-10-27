@@ -191,8 +191,20 @@ function docker_meme_for(message) {
 
 // WE NEED TO CREATE THE MODAL FIRST, and this should be only used to fill it.
 
+var __warnCountdown = null;
+
 function updateWarningModal({
     title , warningText, buttonText, onClose, meme } = {}) {
+    clearInterval(__warnCountdown);
+    // "Please wait 30 seconds ..." -> live countdown 30, 29, 28 ...
+    var waitLeft = null;
+    var waitMatch = String(warningText || "").match(/(wait\s+)(\d+)(\s+seconds?)/i);
+    if (waitMatch) {
+        waitLeft = parseInt(waitMatch[2], 10);
+        if (/^error/i.test(String(title))) title = "Cooling down";
+        warningText = '<span id="warningCountdownMsg">' + String(warningText).replace(waitMatch[0],
+            waitMatch[1] + '<strong id="warningCountdown" style="font-family:var(--ctfc-pixel,inherit);font-size:1.6em;font-weight:400;display:inline-block;min-width:1.4em;text-align:center;vertical-align:-0.1em">' + waitLeft + '</strong><span id="warningCountdownUnit">' + waitMatch[3] + '</span>') + '</span>';
+    }
     const modalHTML = `
         <div id="warningModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background-color:rgba(0,0,0,0.5);">
           <div style="position:relative; margin:10% auto; width:400px; background:white; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.3); overflow:hidden;">
@@ -216,7 +228,25 @@ function updateWarningModal({
     CTFd.lib.$("#warningModal").show();
 
     // Close logic with callback
+    if (waitLeft !== null) {
+        var waitEnd = Date.now() + waitLeft * 1000;
+        __warnCountdown = setInterval(function () {
+            var left = Math.max(0, Math.ceil((waitEnd - Date.now()) / 1000));
+            var el = document.getElementById("warningCountdown");
+            if (!el) { clearInterval(__warnCountdown); return; }
+            el.textContent = left;
+            var unit = document.getElementById("warningCountdownUnit");
+            if (unit) unit.textContent = left === 1 ? " second" : " seconds";
+            if (left === 0) {
+                clearInterval(__warnCountdown);
+                var msg = document.getElementById("warningCountdownMsg");
+                if (msg) msg.innerHTML = "<strong>Ready!</strong> You can start a new container now.";
+            }
+        }, 250);
+    }
+
     const closeModal = () => {
+        clearInterval(__warnCountdown);
         CTFd.lib.$("#warningModal").hide();
         if (typeof onClose === 'function') {
             onClose();  
