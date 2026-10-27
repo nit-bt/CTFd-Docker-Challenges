@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Lock down a CTF challenge server. Run AFTER setup-docker-tls.sh.
 #
-#   sudo ./firewall/harden-chal-host.sh <platform-ip>
+#   sudo ./firewall/harden-chal-host.sh <platform-ip>[,<spare-platform-ip>]
+#
+# A second IP (comma, no spaces) lets a standby CTFd (e.g. the GCP spare) use this
+# server too if the main platform dies. Re-run the script to change the list.
 #
 # <platform-ip> = the IP the CTFd server uses to reach this box
 #   GCP (same VPC)        : platform's INTERNAL IP (10.x.x.x)
@@ -16,7 +19,8 @@ set -euo pipefail
 if [[ $EUID -ne 0 ]]; then echo "Run with sudo"; exit 1; fi
 if [[ $# -lt 1 ]]; then echo "Usage: sudo $0 <platform-ip>"; exit 1; fi
 PLATFORM_IP=$1
-if ! [[ $PLATFORM_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then echo "Not an IPv4 address: $PLATFORM_IP"; exit 1; fi
+IP='[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
+if ! [[ $PLATFORM_IP =~ ^$IP(,$IP)*$ ]]; then echo "Not an IPv4 address (or comma list, no spaces): $PLATFORM_IP"; exit 1; fi
 HERE=$(cd "$(dirname "$0")" && pwd)
 
 echo "[1/4] Install firewall rules + boot service"
