@@ -825,7 +825,7 @@ class DockerHostsAPI(Resource):
 
 memes_namespace = Namespace("docker_memes", description="Optional images shown in the player popups")
 
-MEME_KEYS = ("started", "stopped", "cooldown", "one-at-a-time", "revert-wait", "busy", "error")
+MEME_KEYS = ("started", "stopped", "cooldown", "one-at-a-time", "revert-wait", "busy", "error", "solved")
 MEME_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
 MEME_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "memes")
 
@@ -842,6 +842,15 @@ class DockerMemesAPI(Resource):
                 if os.path.isfile(path):
                     found[key] = "/plugins/docker_challenges/assets/memes/%s.%s?v=%d" % (key, ext, int(os.path.getmtime(path)))
                     break
+        # Correct-flag popup: solved.png plus solved-1.png ... solved-20.png, one picked at random per solve
+        solved = []
+        for name in ["solved"] + ["solved-%d" % i for i in range(1, 21)]:
+            for ext in MEME_EXTS:
+                path = os.path.join(MEME_DIR, "%s.%s" % (name, ext))
+                if os.path.isfile(path):
+                    solved.append("/plugins/docker_challenges/assets/memes/%s.%s?v=%d" % (name, ext, int(os.path.getmtime(path))))
+                    break
+        found["solved_list"] = solved
         return {"success": True, "data": found}
 
 

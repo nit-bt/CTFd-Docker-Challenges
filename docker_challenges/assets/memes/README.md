@@ -12,6 +12,7 @@ No file = plain popup.
 | `revert-wait` | "Revert unlocks …" (pressed Revert too early) |
 | `busy` | "Your previous request is still running…" (double click) |
 | `error` | any other error |
+| `solved`, `solved-1` ... `solved-20` | correct flag ("Flag captured!" popup from the CTFC theme). Add several and one is picked at random each time. |
 
 Example: `cooldown.png`. Keep each image small (under ~300 KB), every popup loads it.
 After adding/replacing: commit, `git pull` + `cp -r docker_challenges ...` on the platform, restart ctfd.
