@@ -3,7 +3,7 @@
 #
 #   sudo ./setup-docker-tls.sh <private-ip> [public-ip-or-domain ...]
 #
-# Example (GCP):  sudo ./setup-docker-tls.sh 10.148.0.5
+# Example (GCP):  sudo ./setup-docker-tls.sh <private-ip>
 #
 # Output:
 #   /etc/docker/tls/            server certs (stay on this box)

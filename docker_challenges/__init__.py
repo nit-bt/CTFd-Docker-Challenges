@@ -73,7 +73,7 @@ class DockerConfig(db.Model):
     __tablename__ = "docker_hosts"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True)
-    hostname = db.Column(db.String(128))       # API address, e.g. 10.148.0.5:2376
+    hostname = db.Column(db.String(128))       # API address, e.g. <chal-server-ip>:2376
     public_host = db.Column(db.String(128))    # what players connect to, e.g. chal1.example.com
     tls_enabled = db.Column(db.Boolean, default=False)
     ca_cert = db.Column(db.Text)

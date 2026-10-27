@@ -79,7 +79,7 @@ On GCP also give the challenge VM **no service account**.
 | Field | Example |
 |---|---|
 | Name | `web-srv` |
-| Docker API address | `10.148.0.5:2376` (private IP) |
+| Docker API address | `<chal-server-private-ip>:2376` |
 | Public address | `chal1.example.com` or the public IP |
 | Port min / max | `30000` / `31000` (must match firewall) |
 | Limits | 256 MB, 0.5 CPU, 256 processes |

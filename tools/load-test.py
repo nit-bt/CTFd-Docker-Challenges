@@ -11,7 +11,7 @@ Options:
     --url http://localhost      CTFd address (default: http://localhost)
     --players 25                how many fake players
     --chal 3,4                  only these challenge IDs (default: every visible docker challenge)
-    --map PUBLIC=PRIVATE        reach instances via a private IP, e.g. --map 34.2.151.22=10.148.0.5
+    --map PUBLIC=PRIVATE        reach instances via a private IP, e.g. --map <public-ip>=<private-ip>
                                 (needed if ctf-chal-ports only allows your own IP); repeatable
     --no-probe                  don't check that instances answer
     --keep                      leave instances running at the end

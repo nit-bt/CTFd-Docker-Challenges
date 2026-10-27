@@ -12,7 +12,7 @@
 # Docker API port                           : only from PLATFORM_IP
 #
 # Config: /etc/default/ctf-docker-firewall (or CTF_FW_CONF)
-#   PLATFORM_IP=10.148.0.4    # CTFd server's IP as seen by this box (comma list allowed: main,spare)
+#   PLATFORM_IP=<platform-ip> # CTFd server's IP as seen by this box (comma list allowed: main,spare)
 #   API_PORT=2376
 #   BRIDGE=docker0
 set -eu
