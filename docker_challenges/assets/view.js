@@ -54,7 +54,9 @@ function get_docker_status() {
             });
             var revertId = 'revert_' + String(item.instance_id).substring(0, 10);
             CTFd.lib.$('#docker_container').html('<pre>Docker Container Information:<br />' + data +
-                '<div class="mt-2" id="' + revertId + '"></div></pre>');
+                '<div class="mt-2" id="' + revertId + '"></div>' +
+                '<div class="mt-1"><small id="docker_expiry"></small></div></pre>');
+            docker_show_expiry(item.expires);
 
             // Fill "host" / "port" placeholders in the challenge's connection info
             var $link = CTFd.lib.$('.challenge-connection-info');
@@ -103,6 +105,22 @@ function get_docker_status() {
     });
 }
 
+function docker_show_expiry(expires) {
+    // One shared timer, so reopening the challenge doesn't stack timers
+    if (window.__dockerExpiryTimer) { clearInterval(window.__dockerExpiryTimer); }
+    var show = function () {
+        var el = document.getElementById("docker_expiry");
+        if (!el) { clearInterval(window.__dockerExpiryTimer); return; }
+        if (!expires) { el.textContent = "No time limit"; return; }
+        var left = Math.floor(parseInt(expires) - Date.now() / 1000);
+        if (left <= 0) { el.textContent = "Time is up, this instance will be removed shortly"; return; }
+        var h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), sec = left % 60;
+        el.textContent = "Instance removed in " + (h ? h + "h " : "") + m + "m " + (sec < 10 ? "0" : "") + sec + "s";
+    };
+    show();
+    window.__dockerExpiryTimer = setInterval(show, 1000);
+}
+
 function stop_container() {
     if (confirm("Are you sure you want to stop the container for: \n" + CTFd._internal.challenge.data.name)) {
         CTFd.fetch("/api/v1/container", {
@@ -147,7 +165,7 @@ function start_container() {
                 get_docker_status();
                 updateWarningModal({
                     title: "Attention!",
-                    warningText: "A Docker container is started for you.<br>You can stop it any time. Revert is available after 5 minutes.",
+                    warningText: "A Docker container is started for you.<br>You can stop it any time. Revert unlocks after a few minutes (see the countdown).",
                     buttonText: "Got it!"
                 });
             } else {

@@ -11,10 +11,11 @@ Lets players spin up their own container per challenge, and lets you spread chal
 | Address shown to players | The Docker API address (often a private IP) | Separate **public address** per server |
 | Player ports | Random 30000-60000 | Per-server range (default 30000-31000) |
 | Container limits | None | Per-server memory / CPU / max processes |
+| Instance times | Fixed in code (2 h lifetime, 5 min revert) | Per server on the Docker Config page: lifetime (0 = no limit), revert after, cooldown after Stop. Players see a countdown |
 | Teams mode | "One container" check crashes | Works (one container per team) |
 | Dead server | Can hang CTFd | 10s timeout, clean error, UP/DOWN shown in admin |
 
-| Stop | Only after 5 min | Any time (30s cooldown before restarting that challenge) |
+| Stop | Only after 5 min | Any time (cooldown before restarting that challenge, default 30 s) |
 | Old containers (2 h+) | Removed only when the *same* player starts another one, so abandoned ones run forever | Removed for **everyone**, checked at most once a minute whenever anyone uses a docker challenge, and every time an admin opens Docker Status |
 | Busy starts (many players at once) | Two players can get the same random port → "driver failed programming external connectivity" | Ports reserved in Redis first (atomic), plus up to 3 retries with fresh ports if Docker still says a port is taken |
 | Double-click Start | Can create 2 containers | One request at a time per player/team; a second one gets "still running, try again" |
@@ -82,6 +83,7 @@ On GCP also give the challenge VM **no service account**.
 | Public address | `chal1.example.com` or the public IP |
 | Port min / max | `30000` / `31000` (must match firewall) |
 | Limits | 256 MB, 0.5 CPU, 256 processes |
+| Times | lifetime 120 min, revert after 5 min, cooldown 30 s |
 | TLS | Yes + upload the 3 files |
 
 Save, then pick the **allowed repositories** and save again.
@@ -105,6 +107,6 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 
 ## Tested
 
-143 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors.
+184 end-to-end checks on CTFd 3.7.7 (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.

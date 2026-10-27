@@ -26,6 +26,7 @@
                         <th class="text-left" style="cursor: pointer;" onclick="sortTable(4)">Address</th>
                         <th class="text-left" style="cursor: pointer;" onclick="sortTable(5)">Image</th>
                         <th class="text-left" style="cursor: pointer;" onclick="sortTable(6)">Start Time</th>
+                        <th class="text-left" style="cursor: pointer;" onclick="sortTable(7)">Expires</th>
                         <th class="text-left">Kill</th>
                     </tr>
                 </thead>
@@ -39,6 +40,7 @@
                         <td style="white-space: nowrap;">{{ d.address }}</td>
                         <td style="white-space: nowrap;">{{ d.docker_image }}</td>
                         <td style="white-space: nowrap;">{{ d.timestamp | datetimeformat }}</td>
+                        <td style="white-space: nowrap;">{% if d.expires %}{{ d.expires | datetimeformat }}{% else %}never{% endif %}</td>
                         <td class='text-center'><a style="cursor: pointer;" class="fas fa-trash" onclick="check_nuke_container('{{ d.instance_id }}', false)"></a></td>
                     </tr>
                     {% endfor %}

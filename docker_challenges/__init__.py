@@ -50,9 +50,11 @@ from CTFd.utils.uploads import delete_file
 from CTFd.utils.user import get_current_team, get_current_user, get_ip, is_admin
 
 API_TIMEOUT = 10          # seconds for any Docker API call
-REVERT_SECONDS = 300      # player can stop/revert after 5 min
-STALE_SECONDS = 7200      # containers older than 2h are removed
-START_COOLDOWN = 30       # seconds before a player can start again after stopping
+# Defaults for new hosts; each host can override them on the Docker Config page.
+DEFAULT_LIFETIME_MIN = 120  # instance removed after this long (0 = no limit)
+DEFAULT_REVERT_MIN = 5      # Revert unlocks after this long
+DEFAULT_COOLDOWN_SEC = 30   # wait after pressing Stop before starting that challenge again
+LEGACY_LIFETIME_SEC = 7200  # for instances created before lifetimes were stored
 PORT_HOLD = 120           # a picked port stays reserved this long, so parallel starts can't pick it too
 START_ATTEMPTS = 3        # retries with fresh ports if Docker says a port is taken
 SWEEP_EVERY = 60          # global stale-container sweep runs at most once per this many seconds
@@ -82,6 +84,25 @@ class DockerConfig(db.Model):
     mem_limit_mb = db.Column(db.Integer, default=256)
     cpu_limit = db.Column(db.Float, default=0.5)
     pids_limit = db.Column(db.Integer, default=256)
+    lifetime_min = db.Column(db.Integer, default=DEFAULT_LIFETIME_MIN)
+    revert_min = db.Column(db.Integer, default=DEFAULT_REVERT_MIN)
+    cooldown_sec = db.Column(db.Integer, default=DEFAULT_COOLDOWN_SEC)
+
+    @property
+    def lifetime_seconds(self):
+        """None = no limit."""
+        m = DEFAULT_LIFETIME_MIN if self.lifetime_min is None else int(self.lifetime_min)
+        return None if m <= 0 else m * 60
+
+    @property
+    def revert_seconds(self):
+        m = DEFAULT_REVERT_MIN if self.revert_min is None else int(self.revert_min)
+        return max(0, m) * 60
+
+    @property
+    def cooldown_seconds(self):
+        c = DEFAULT_COOLDOWN_SEC if self.cooldown_sec is None else int(self.cooldown_sec)
+        return max(0, c)
 
     @property
     def display_host(self):
@@ -100,6 +121,7 @@ class DockerChallengeTracker(db.Model):
     docker_image = db.Column(db.String(128), index=True)
     timestamp = db.Column(db.Integer, index=True)
     revert_time = db.Column(db.Integer, index=True)
+    expires = db.Column(db.Integer, index=True)  # unix time; NULL = no limit
     instance_id = db.Column(db.String(128), index=True)
     ports = db.Column(db.String(128))
     host = db.Column(db.String(128))           # public host shown to the player
@@ -329,7 +351,7 @@ def remove_tracked(entry):
 
 
 def sweep_stale(force=False):
-    """Remove EVERY player's containers older than STALE_SECONDS.
+    """Remove EVERY player's containers whose lifetime is over.
 
     Runs as a side effect of normal traffic (players opening docker challenges,
     starting containers, admins opening Docker Status), at most once per
@@ -338,10 +360,12 @@ def sweep_stale(force=False):
     """
     if not force and not cache.add("docker_sweep_lock", 1, timeout=SWEEP_EVERY):
         return 0
-    cutoff = unix_time(datetime.utcnow()) - STALE_SECONDS
+    now = unix_time(datetime.utcnow())
     stale = (
-        DockerChallengeTracker.query.filter(DockerChallengeTracker.timestamp <= cutoff)
-        .order_by(DockerChallengeTracker.timestamp)
+        DockerChallengeTracker.query.filter(
+            DockerChallengeTracker.expires.isnot(None), DockerChallengeTracker.expires <= now
+        )
+        .order_by(DockerChallengeTracker.expires)
         .limit(SWEEP_BATCH)
         .all()
     )
@@ -393,6 +417,14 @@ def prune_dead(owner_id):
     if removed:
         db.session.commit()
     return removed
+
+
+def _human(seconds):
+    if seconds % 3600 == 0 and seconds >= 3600:
+        return "%d h" % (seconds // 3600)
+    if seconds % 60 == 0:
+        return "%d min" % (seconds // 60)
+    return "%d s" % seconds
 
 
 def req_arg(name):
@@ -455,10 +487,24 @@ def define_docker_admin(app):
                     b.mem_limit_mb = int(request.form.get("mem_limit_mb") or 0)
                     b.cpu_limit = float(request.form.get("cpu_limit") or 0)
                     b.pids_limit = int(request.form.get("pids_limit") or 0)
+                    # blank / missing -> keep the current value (or the default), never "0 = no limit" by accident
+                    for field, default in (("lifetime_min", DEFAULT_LIFETIME_MIN),
+                                           ("revert_min", DEFAULT_REVERT_MIN),
+                                           ("cooldown_sec", DEFAULT_COOLDOWN_SEC)):
+                        raw = (request.form.get(field) or "").strip()
+                        if raw == "":
+                            cur = getattr(b, field)
+                            setattr(b, field, default if cur is None else cur)
+                        else:
+                            setattr(b, field, int(raw))
                 except ValueError:
-                    errors.append("Ports and limits must be numbers")
+                    errors.append("Ports, limits and times must be whole numbers")
                 if b.port_min > b.port_max:
                     errors.append("Port min must be <= port max")
+                if min(b.lifetime_min or 0, b.revert_min or 0, b.cooldown_sec or 0) < 0:
+                    errors.append("Times can't be negative")
+                if (b.lifetime_min or 0) > 0 and (b.revert_min or 0) >= b.lifetime_min:
+                    errors.append("'Revert after' must be shorter than the instance lifetime")
                 b.repositories = ",".join(request.form.getlist("repositories")) or None
                 if not errors:
                     if not current:
@@ -521,6 +567,7 @@ def define_docker_status(app):
                     "host_name": hosts.get(t.host_id, "?"),
                     "address": "%s:%s" % (t.host, t.ports),
                     "timestamp": t.timestamp,
+                    "expires": t.expires,
                 }
             )
         return render_template(
@@ -644,9 +691,9 @@ class ContainerAPI(Resource):
         prune_dead(owner.id)
         now = unix_time(datetime.utcnow())
 
-        # Remove this owner's stale containers (2h+)
+        # Remove this owner's expired containers
         for t in owner_filter(DockerChallengeTracker.query, owner.id).all():
-            if now - int(t.timestamp) >= STALE_SECONDS:
+            if t.expires is not None and now >= int(t.expires):
                 remove_tracked(t)
 
         check = owner_filter(DockerChallengeTracker.query, owner.id).filter_by(challenge_id=chal.id).first()
@@ -658,12 +705,18 @@ class ContainerAPI(Resource):
             if check is None:
                 return abort(403, "No running container for this challenge")
             remove_tracked(check)
-            cache.set(cooldown_key, now + START_COOLDOWN, timeout=START_COOLDOWN)
+            if docker.cooldown_seconds:
+                cache.set(cooldown_key, now + docker.cooldown_seconds, timeout=docker.cooldown_seconds)
             return {"success": True, "result": "Container stopped"}
 
-        # Revert: only after 5 min
-        if check is not None and now - int(check.timestamp) < REVERT_SECONDS:
-            return abort(403, "To prevent abuse, containers can be reverted 5 minutes after creation. You can stop it any time.")
+        # Revert: only once revert_time is reached
+        if check is not None and now < int(check.revert_time or 0):
+            wait = int(check.revert_time) - now
+            return abort(
+                403,
+                "To prevent abuse, Revert unlocks %s after starting (%d:%02d left). You can Stop any time."
+                % (_human(docker.revert_seconds), wait // 60, wait % 60),
+            )
         if check is not None:
             remove_tracked(check)
         else:
@@ -693,7 +746,8 @@ class ContainerAPI(Resource):
             user_id=str(owner.id) if not is_teams_mode() else None,
             docker_image=chal.docker_image,
             timestamp=now,
-            revert_time=now + REVERT_SECONDS,
+            revert_time=now + docker.revert_seconds,
+            expires=(now + docker.lifetime_seconds) if docker.lifetime_seconds else None,
             instance_id=cid,
             ports=",".join(str(p) for p in ports),
             host=docker.display_host,
@@ -730,6 +784,7 @@ class DockerStatus(Resource):
                     "docker_image": t.docker_image,
                     "timestamp": t.timestamp,
                     "revert_time": t.revert_time,
+                    "expires": t.expires,
                     "instance_id": t.instance_id,
                     "ports": t.ports.split(",") if t.ports else [],
                     "host": t.host,
@@ -790,8 +845,44 @@ class KillContainerAPI(Resource):
 # --------------------------------------------------------------------------- #
 # Plugin entry
 # --------------------------------------------------------------------------- #
+def migrate_columns():
+    """Add columns introduced after a host/tracker table already existed.
+
+    create_all() only creates missing TABLES, not missing columns, so an
+    existing CTFd database would crash on the new fields without this.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(db.engine)
+    tables = set(insp.get_table_names())
+    wanted = {
+        "docker_hosts": [
+            ("lifetime_min", "INTEGER DEFAULT %d" % DEFAULT_LIFETIME_MIN),
+            ("revert_min", "INTEGER DEFAULT %d" % DEFAULT_REVERT_MIN),
+            ("cooldown_sec", "INTEGER DEFAULT %d" % DEFAULT_COOLDOWN_SEC),
+        ],
+        "docker_host_tracker": [("expires", "INTEGER")],
+    }
+    with db.engine.begin() as conn:
+        for table, cols in wanted.items():
+            if table not in tables:
+                continue
+            have = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in cols:
+                if name in have:
+                    continue
+                conn.execute(text("ALTER TABLE %s ADD COLUMN %s %s" % (table, name, ddl)))
+                if table == "docker_host_tracker" and name == "expires":
+                    # instances already running keep the old fixed 2 h lifetime
+                    conn.execute(text(
+                        "UPDATE docker_host_tracker SET expires = timestamp + %d WHERE expires IS NULL"
+                        % LEGACY_LIFETIME_SEC
+                    ))
+
+
 def load(app):
     app.db.create_all()
+    migrate_columns()
     CHALLENGE_CLASSES["docker"] = DockerChallengeType
 
     @app.template_filter("datetimeformat")

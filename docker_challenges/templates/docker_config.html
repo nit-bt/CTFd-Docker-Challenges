@@ -17,7 +17,7 @@
                 <a href="?id={{ h.id }}" class="list-group-item list-group-item-action {% if config and config.id == h.id %}active{% endif %}">
                     <span class="badge {% if status[h.id] %}badge-success bg-success{% else %}badge-danger bg-danger{% endif %}">{% if status[h.id] %}UP{% else %}DOWN{% endif %}</span>
                     <b>{{ h.name }}</b><br>
-                    <small>API: {{ h.hostname }}<br>Players: {{ h.display_host }} ({{ h.port_min }}-{{ h.port_max }})</small>
+                    <small>API: {{ h.hostname }}<br>Players: {{ h.display_host }} ({{ h.port_min }}-{{ h.port_max }})<br>{{ h.mem_limit_mb }} MB · {{ h.cpu_limit }} CPU · {% if h.lifetime_seconds %}{{ (h.lifetime_seconds // 60) }} min{% else %}no time limit{% endif %}</small>
                 </a>
                 {% else %}
                 <li class="list-group-item text-muted">No hosts yet</li>
@@ -49,6 +49,12 @@
                     <div class="col"><label>CPUs / container (0 = none)</label><input class="form-control" type="number" step="0.1" name="cpu_limit" value="{{ config.cpu_limit if config else 0.5 }}"/></div>
                     <div class="col"><label>Max processes (0 = none)</label><input class="form-control" type="number" name="pids_limit" value="{{ config.pids_limit if config else 256 }}"/></div>
                 </div>
+                <div class="form-row row mb-2">
+                    <div class="col"><label>Instance lifetime (min, 0 = no limit)</label><input class="form-control" type="number" min="0" name="lifetime_min" value="{{ config.lifetime_min if config and config.lifetime_min is not none else 120 }}"/></div>
+                    <div class="col"><label>Revert after (min)</label><input class="form-control" type="number" min="0" name="revert_min" value="{{ config.revert_min if config and config.revert_min is not none else 5 }}"/></div>
+                    <div class="col"><label>Cooldown after Stop (s, 0 = none)</label><input class="form-control" type="number" min="0" name="cooldown_sec" value="{{ config.cooldown_sec if config and config.cooldown_sec is not none else 30 }}"/></div>
+                </div>
+                <p class="text-muted mb-2"><small>Limits and times apply to instances started after you save. Running ones keep theirs.</small></p>
                 <div class="form-group mb-2">
                     <p class="mb-1">TLS Enabled?</p>
                     <input type="radio" name="tls_enabled" id="tls-no" value="False" onclick="enable_file_form(false)" {% if not config or not config.tls_enabled %}checked{% endif %}/>
