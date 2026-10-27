@@ -203,7 +203,7 @@ function updateWarningModal({
         waitLeft = parseInt(waitMatch[2], 10);
         if (/^error/i.test(String(title))) title = "Cooling down";
         warningText = '<span id="warningCountdownMsg">' + String(warningText).replace(waitMatch[0],
-            waitMatch[1] + '<strong id="warningCountdown" style="font-family:var(--ctfc-pixel,inherit);font-size:1.6em;font-weight:400;display:inline-block;min-width:1.4em;text-align:center;vertical-align:-0.1em">' + waitLeft + '</strong><span id="warningCountdownUnit">' + waitMatch[3] + '</span>') + '</span>';
+            waitMatch[1] + '<strong id="warningCountdown" style="font-variant-numeric:tabular-nums">' + waitLeft + '</strong><span id="warningCountdownUnit">' + waitMatch[3] + '</span>') + '</span>';
     }
     const modalHTML = `
         <div id="warningModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:9999; background-color:rgba(0,0,0,0.5);">
