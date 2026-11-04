@@ -7,8 +7,8 @@ per-host time settings, DB upgrade, popup images.
 ## Run
 
 ```bash
-# 1. CTFd 3.7.7 + this plugin
-git clone -b 3.7.7 https://github.com/CTFd/CTFd.git && cd CTFd
+# 1. CTFd 3.8.9 (also passes on 3.7.7) + this plugin
+git clone -b 3.8.9 https://github.com/CTFd/CTFd.git && cd CTFd
 python3.11 -m venv ../venv && ../venv/bin/pip install -r requirements.txt -r development.txt
 cp -r ../CTFd-Docker-Challenges/docker_challenges CTFd/plugins/
 cp ../CTFd-Docker-Challenges/tests/*.py .

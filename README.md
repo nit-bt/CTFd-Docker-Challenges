@@ -1,6 +1,6 @@
 # CTFd Docker Challenges (multi-host fork)
 
-Based on [offsecginger/CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges) (GPL-3.0), extended for **CTFd 3.7.7**. See [Credits](#credits).
+Based on [offsecginger/CTFd-Docker-Challenges](https://github.com/offsecginger/CTFd-Docker-Challenges) (GPL-3.0), extended for **CTFd 3.7.7 and 3.8.9**. See [Credits](#credits).
 Lets players spin up their own container per challenge, and lets you spread challenges across **several Docker servers**.
 
 ## What's different from upstream
@@ -111,7 +111,7 @@ If `ctf-chal-ports` only allows your own IP, add `--map <chal-public-ip>=<chal-p
 
 ## Tested
 
-197 end-to-end checks on CTFd 3.7.7 (`tests/`) (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
+197 end-to-end checks on CTFd 3.7.7 and 3.8.9 (`tests/`) (Users + Teams mode) against two fake Docker hosts, one plain HTTP and one TLS with client certs: host config, image filtering, start/stop/revert, stop cooldown, port ranges, limits, one-container rule, solve cleanup, admin nuke, CSRF on start/stop/nuke, dead host, challenge delete, port-clash retry, parallel port reservation, global old-container cleanup, double-start lock, dead-instance detection, Docker API errors, per-host times, upgrading an existing database, popup images.
 
 Firewall: 37 checks in a simulated challenge server (network namespaces with Docker's NAT rules), before vs after `apply`, re-apply, Docker inserting rules above ours, and `remove`.
 
