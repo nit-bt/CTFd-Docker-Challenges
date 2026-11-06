@@ -41,12 +41,20 @@ function get_docker_status() {
     // Default: show the start button. Replaced below if a container is running.
     CTFd.lib.$('#docker_container').html(docker_start_button_html());
 
+
     CTFd.fetch("/api/v1/docker_status").then(response => response.json())
     .then(result => {
+        // Connection info with "host"/"port" placeholders: keep the template (to fill in when an
+        // instance runs) and show a hint instead of a useless "http://host:port" until then.
+        // (Done here, not before the fetch: the modal's connection info isn't in the page yet then.)
+        var $conn = CTFd.lib.$('.challenge-connection-info');
+        if ($conn.length && $conn.data('tpl') === undefined) { $conn.data('tpl', $conn.html()); }
+        var running = false;
         (result.data || []).forEach(item => {
             if (String(item.challenge_id) !== String(chalId)) {
                 return;
             }
+            running = true;
             var ports = (item.ports || []).map(String);
             var data = '';
             ports.forEach(port => {
@@ -59,7 +67,7 @@ function get_docker_status() {
             // Fill "host" / "port" placeholders in the challenge's connection info
             var $link = CTFd.lib.$('.challenge-connection-info');
             if ($link.length) {
-                var html = $link.html();
+                var html = $link.data('tpl') !== undefined ? $link.data('tpl') : $link.html();
                 html = html.replace(/\bhost\b/gi, item.host);
                 html = html.replace(/\bport\b|\b\d{5}\b/gi, ports[0]);
                 $link.html(html);
@@ -97,6 +105,9 @@ function get_docker_status() {
             var x = setInterval(tick, 1000);
             tick();
         });
+        if (!running && $conn.length && /\bhost\b|\bport\b/i.test($conn.data('tpl'))) {
+            $conn.html('<small class="text-muted">Start the instance to get your address.</small>');
+        }
     })
     .catch(error => {
         console.error('Error fetching docker status:', error);
