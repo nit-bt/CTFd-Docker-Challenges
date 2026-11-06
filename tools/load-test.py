@@ -27,6 +27,7 @@ import os
 import re
 import secrets
 import socket
+import ssl
 import statistics
 import sys
 import threading
@@ -42,14 +43,18 @@ LOGIN_PAUSE = 5.5
 class Api:
     """Tiny HTTP client: admin token OR a logged-in browser-like session."""
 
-    def __init__(self, base, token=None):
+    def __init__(self, base, token=None, insecure=False):
         self.base = base.rstrip("/")
         self.token = token
         self.nonce = None
         self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(
-            urllib.request.HTTPCookieProcessor(self.jar), urllib.request.ProxyHandler({})
-        )
+        handlers = [urllib.request.HTTPCookieProcessor(self.jar), urllib.request.ProxyHandler({})]
+        if insecure:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            handlers.append(urllib.request.HTTPSHandler(context=ctx))
+        self.opener = urllib.request.build_opener(*handlers)
 
     def raw(self, method, path, data=None, json_body=None, timeout=60):
         headers = {}
@@ -119,6 +124,7 @@ def main():
     ap.add_argument("--chal", default="")
     ap.add_argument("--map", action="append", default=[])
     ap.add_argument("--no-probe", action="store_true")
+    ap.add_argument("--insecure", action="store_true", help="skip TLS cert check (for https://localhost behind the origin cert)")
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--delete-users", action="store_true")
     args = ap.parse_args()
@@ -128,7 +134,7 @@ def main():
         die("set CTFD_TOKEN first (CTFd -> Settings -> Access Tokens -> Generate, as admin)")
     ipmap = dict(m.split("=", 1) for m in args.map)
 
-    admin = Api(args.url, token=token)
+    admin = Api(args.url, token=token, insecure=args.insecure)
 
     # --- checks -----------------------------------------------------------
     status, conf = admin.json("GET", "/api/v1/configs/user_mode")
@@ -178,10 +184,10 @@ def main():
     for i, p in enumerate(players):
         if i and i % LOGIN_BATCH == 0:
             time.sleep(LOGIN_PAUSE)
-        p["api"] = Api(args.url)
+        p["api"] = Api(args.url, insecure=args.insecure)
         if not p["api"].login(p["name"], password):
             time.sleep(LOGIN_PAUSE)  # rate limited by something else? wait and retry once
-            p["api"] = Api(args.url)
+            p["api"] = Api(args.url, insecure=args.insecure)
             if not p["api"].login(p["name"], password):
                 die("login failed for %s" % p["name"])
 
