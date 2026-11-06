@@ -158,9 +158,16 @@ function start_container(replace) {
         return response.json().then(function (json) {
             if (!response.ok && json.running && replace !== true) {
                 // Another challenge's instance is running: offer to swap instead of a dead-end error
-                var msg = json.running + " is running.\n\nStop it and start this one?\n" +
-                          "(Anything you were doing in " + json.running + " is lost.)";
-                if (confirm(msg)) { start_container(true); } else { get_docker_status(); }
+                var name = CTFd.lib.$('<div>').text(json.running).html();   // escape for HTML
+                updateWarningModal({
+                    title: "Switch challenge?",
+                    warningText: "<b><i>" + name + "</i></b> is running.<br><br>Stop it and start this one?<br>" +
+                                 "<small>Anything you were doing in " + name + " is lost.</small>",
+                    confirmText: "Stop it & start",
+                    buttonText: "Cancel",
+                    onConfirm: function () { start_container(true); },
+                    onClose: function () { get_docker_status(); }
+                });
                 return;
             }
             if (response.ok) {
@@ -212,7 +219,7 @@ function docker_meme_for(message) {
 var __warnCountdown = null;
 
 function updateWarningModal({
-    title , warningText, buttonText, onClose, meme } = {}) {
+    title , warningText, buttonText, onClose, meme, confirmText, onConfirm } = {}) {
     clearInterval(__warnCountdown);
     // "Please wait 30 seconds ..." -> live countdown 30, 29, 28 ...
     var waitLeft = null;
@@ -235,6 +242,7 @@ function updateWarningModal({
               ${warningText}
             </div>
             <div class="modal-footer" style="padding:1rem; text-align:right; border-top:1px solid #dee2e6;">
+              ${confirmText ? `<button type="button" class="btn btn-danger me-2" id="warningConfirmBtn">${confirmText}</button>` : ''}
               <button type="button" class="btn btn-secondary" id="warningOkBtn">${buttonText}</button>
             </div>
           </div>
@@ -273,6 +281,11 @@ function updateWarningModal({
 
     CTFd.lib.$("#warningCloseBtn").on("click", closeModal);
     CTFd.lib.$("#warningOkBtn").on("click", closeModal);
+    CTFd.lib.$("#warningConfirmBtn").on("click", function () {
+        clearInterval(__warnCountdown);
+        CTFd.lib.$("#warningModal").hide();
+        if (typeof onConfirm === 'function') { onConfirm(); }
+    });
 
     if (meme) {
         docker_memes().then(function (memes) {
