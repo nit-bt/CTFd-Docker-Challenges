@@ -129,6 +129,8 @@ def main():
     ap.add_argument("--delete-users", action="store_true")
     args = ap.parse_args()
 
+    if args.insecure:
+        ssl._create_default_https_context = ssl._create_unverified_context   # also covers redirect-followed connections
     token = os.environ.get("CTFD_TOKEN")
     if not token:
         die("set CTFD_TOKEN first (CTFd -> Settings -> Access Tokens -> Generate, as admin)")
