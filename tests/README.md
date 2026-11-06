@@ -1,7 +1,7 @@
 # Plugin tests
 
 End-to-end tests for the multi-host fork, run against a real CTFd checkout and two fake Docker hosts
-(no real Docker needed). 197 checks: users mode, teams mode, port clashes, sweep, locks, dead instances,
+(no real Docker needed). 205 checks: users mode, teams mode, port clashes, sweep, locks, dead instances,
 per-host time settings, DB upgrade, popup images.
 
 ## Run

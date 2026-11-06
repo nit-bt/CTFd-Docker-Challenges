@@ -148,14 +148,21 @@ function stop_container() {
     }
 }
 
-function start_container() {
+function start_container(replace) {
     CTFd.lib.$('#docker_container').html('<div class="text-center"><i class="fas fa-circle-notch fa-spin fa-1x"></i></div>');
     CTFd.fetch("/api/v1/container", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ id: docker_chal_id() })
+        body: JSON.stringify({ id: docker_chal_id(), replace: replace === true })
     }).then(function (response) {
         return response.json().then(function (json) {
+            if (!response.ok && json.running && replace !== true) {
+                // Another challenge's instance is running: offer to swap instead of a dead-end error
+                var msg = json.running + " is running.\n\nStop it and start this one?\n" +
+                          "(Anything you were doing in " + json.running + " is lost.)";
+                if (confirm(msg)) { start_container(true); } else { get_docker_status(); }
+                return;
+            }
             if (response.ok) {
                 get_docker_status();
                 updateWarningModal({

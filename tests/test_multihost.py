@@ -183,6 +183,30 @@ def run_users_mode():
 
         r = alice.post("/api/v1/container", json={"id": crypto})
         check(r.status_code == 403 and "only run one" in r.get_data(as_text=True), "one container per user enforced")
+        check(r.get_json().get("running") == "Web 1", "refusal names the running challenge (for the swap prompt)")
+        n_a, n_b = len(fake(2401)["containers"]), len(fake(2402, tls=True)["containers"])
+        r = alice.post("/api/v1/container", json={"id": crypto, "replace": True})
+        check(r.status_code == 200, "replace: stop Web 1 + start Crypto 1 -> %s %s" % (r.status_code, r.get_data(as_text=True)[:120]))
+        check(len(fake(2401)["containers"]) == n_a - 1 and len(fake(2402, tls=True)["containers"]) == n_b + 1,
+              "replace removed Web 1 from host A and started Crypto 1 on host B")
+        s = alice.get("/api/v1/docker_status").get_json()["data"]
+        check(len(s) == 1 and s[0]["challenge_id"] == crypto and s[0]["host"] == "chal2.example.com",
+              "after replace: exactly one instance (Crypto 1 on host B)")
+        r = alice.post("/api/v1/container", json={"id": web})
+        check(r.status_code == 403 and "wait" in r.get_data(as_text=True),
+              "swapping straight back to Web 1 hits its cooldown first (same as after Stop)")
+        r = alice.post("/api/v1/container", json={"id": web, "replace": True})
+        check(r.status_code == 403 and "wait" in r.get_data(as_text=True),
+              "replace keeps Web 1's 30 s cooldown (no stop/start abuse) -> %s" % r.get_data(as_text=True)[:80])
+        r = alice.post("/api/v1/container", json={"id": crypto, "stop": True})
+        check(r.status_code == 200, "alice stops Crypto 1")
+        from CTFd.cache import cache
+        from CTFd.models import Users
+        _aid = Users.query.filter_by(name="alice").first().id
+        cache.delete("docker_cooldown_user_%s_%s" % (_aid, web)); cache.delete("docker_cooldown_user_%s_%s" % (_aid, crypto))
+        r = alice.post("/api/v1/container", json={"id": web})
+        check(r.status_code == 200, "alice back on Web 1 for the next checks")
+        port = int(list(fake(2401)["containers"][-1]["HostConfig"]["PortBindings"].values())[0][0]["HostPort"])
         r = alice.post("/api/v1/container", json={"id": web})
         check(r.status_code == 403 and "Revert unlocks 5 min" in r.get_data(as_text=True), "revert blocked before 5 min")
         n = len(fake(2401)["containers"])

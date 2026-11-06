@@ -760,11 +760,23 @@ class ContainerAPI(Resource):
 
         other = owner_filter(DockerChallengeTracker.query, owner.id).first()
         if other is not None:
-            return abort(
-                403,
-                "Another container is already running for challenge:<br><i><b>%s</b></i>.<br>"
-                "Please stop it first. You can only run one container." % other.challenge,
-            )
+            if req_arg("replace"):
+                # The player confirmed "stop <other> and start this one": stop it like the Stop button
+                # would (same cooldown on that challenge), then carry on starting this one.
+                other_host = get_host(other.host_id)
+                other_chal_id = other.challenge_id
+                remove_tracked(other)
+                if other_host is not None and other_host.cooldown_seconds:
+                    other_key = "docker_cooldown_%s_%s_%s" % ("team" if is_teams_mode() else "user", owner.id, other_chal_id)
+                    cache.set(other_key, now + other_host.cooldown_seconds, timeout=other_host.cooldown_seconds)
+            else:
+                # "running" lets the page ask "<name> is running. Stop it and start this one?"
+                return {
+                    "success": False,
+                    "running": other.challenge,
+                    "message": "Another container is already running for challenge:<br><i><b>%s</b></i>.<br>"
+                               "Please stop it first. You can only run one container." % other.challenge,
+                }, 403
 
         try:
             allowed = get_repositories(docker, tags=True, repos=docker.repositories)
